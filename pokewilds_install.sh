@@ -26,7 +26,7 @@ dpi=96
 EOL
 
 # Installation de Ubuntu via proot-distro
-proot-distro install ubuntu-oldlts
+proot-distro install ubuntu
 
 # Creation du script d'installation Ubuntu
 cat > ubuntu_setup.sh << 'EOL'
@@ -59,7 +59,7 @@ EOL
 chmod +x ubuntu_setup.sh
 
 # Executer le script dans proot-distro
-proot-distro login ubuntu-oldlts -- bash /data/data/com.termux/files/home/ubuntu_setup.sh
+proot-distro login ubuntu -- bash /data/data/com.termux/files/home/ubuntu_setup.sh
 
 # Script de lancement avec Termux-X11
 cat > pokewilds_x11.sh << 'EOL'
@@ -87,7 +87,7 @@ XDG_RUNTIME_DIR=${TMPDIR} termux-x11 :0 &
 # Attente pour s'assurer que Termux-X11 est lance
 sleep 2
 # Lancement de Pokewilds dans proot-distro
-XDG_RUNTIME_DIR=${TMPDIR} proot-distro login ubuntu-oldlts --bind $PREFIX/tmp/.X11-unix:/tmp/.X11-unix --bind $PREFIX/tmp:/tmp -- bash -c '
+XDG_RUNTIME_DIR=${TMPDIR} proot-distro login ubuntu --bind $PREFIX/tmp/.X11-unix:/tmp/.X11-unix --bind $PREFIX/tmp:/tmp -- bash -c '
 export DISPLAY=:0
 export XDG_RUNTIME_DIR=/tmp
 export PULSE_SERVER=127.0.0.1
@@ -159,7 +159,7 @@ echo "VNC server should be available at 127.0.0.1:5901"
 xhost +local:
 
 echo "Pokewilds starting..."
-proot-distro login ubuntu-oldlts --isolated --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c '
+proot-distro login ubuntu --isolated --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c '
 export DISPLAY=:1
 export LIBGL_ALWAYS_SOFTWARE=true
 export __GLX_VENDOR_LIBRARY_NAME=mesa
