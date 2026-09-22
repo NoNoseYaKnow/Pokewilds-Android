@@ -13,6 +13,7 @@
         <activity android:name="com.termux.x11.MainActivity" tools:node="remove" />
         <activity android:name="com.termux.x11.LoriePreferences" tools:node="remove" />
         <service android:name=".RuntimeService" android:exported="false" />
+        <service android:name=".GameAcquisitionService" android:exported="false" />
         <service android:name="com.termux.x11.utils.KeyInterceptor" tools:node="remove" />
         <receiver android:name="com.termux.x11.LoriePreferences$Receiver" tools:node="remove" />
         <receiver android:name="com.termux.x11.LorieApp$Receiver" android:exported="false" tools:replace="android:exported" />

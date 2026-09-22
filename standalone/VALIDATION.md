@@ -1,12 +1,46 @@
 # Standalone prototype validation
 
+## 0.4 game acquisition candidate (2026-09-22)
+
+The 0.4 candidate removes PokeWilds game files from the APK. Its first launch
+downloads the SHA-256 pinned official v0.8.11 ZIP, or accepts a user selected
+ZIP or extracted folder. Both paths stage and verify game files before making
+them active. An existing installation recognizes its official game JAR and
+keeps its saves, settings, and mods without downloading again.
+
+The offline runtime rebuild and archive verification passed. The runtime
+archive is 194,071,609 bytes, declares 628,336,041 expanded bytes and
+`gameBytes=0`. The signed APK is 206,134,452 bytes. The APK verifier passed
+with zero warnings and errors, confirmed the signature, found the pinned
+`game-source.json`, and found no game files in the payload. Host Python tests
+and Android JVM tests passed, including extraction of the cached official ZIP,
+archive path rejection, activation preservation, and interrupted activation
+recovery. Build and verification logs are under `standalone-build-logs/`.
+
+The signed candidate was then tested on a connected Android 13 Pocket DMG:
+
+| 0.4 device check | Result |
+| --- | --- |
+| Clean install, automatic download | A separate test application downloaded and installed the pinned official game, then reached the PokeWilds menu. |
+| Offline ZIP import | With Wi-Fi disabled and the test application cleared, the Android file picker accepted the official v0.8.11 ZIP from Downloads. The game reached its menu. |
+| Offline folder import | With Wi-Fi disabled and the test application cleared, the Android folder picker accepted the extracted official v0.8.11 folder from Download. The game reached its menu. |
+| Signed upgrade | Android installed the exact signed 0.4 APK over the existing 0.3 application without clearing its data. Version code advanced from 3 to 4; the retained game launched directly to its menu without a download or source prompt. |
+
+The tested release APK is `PokeWilds-Android-0.4-arm64.apk`, SHA-256
+`ef252bfc04b3ea6ce38194ad30d839876b66ce9744a0b14f056e6d8682dc2c88`.
+Wi-Fi was restored after the offline checks. Device testing covered acquisition
+and startup; extended gameplay and device compatibility remain separate checks.
+
+The measurements and emulator results below describe earlier bundled-game
+prototypes. Their APK size and storage figures do not apply to 0.4.
+
 For prototype 0.2 Auto viewport and the initial physical DMG follow-up, see
 [AUTO_VIEWPORT_VALIDATION.md](AUTO_VIEWPORT_VALIDATION.md). The report below
 records the original 0.1 emulator implementation pass.
 
-This report separates the Android emulator evidence from the Pocket DMG
-acceptance gate. The game is the unchanged official PokeWilds 0.8.11 JAR.
-No physical device was used for this implementation pass.
+The older prototype report below separates Android emulator evidence from its
+original Pocket DMG acceptance gate. The game is the unchanged official
+PokeWilds 0.8.11 JAR. The 0.4 device checks are recorded above.
 
 ## Environment
 
@@ -116,7 +150,8 @@ These are deliberately not inferred from emulator tests:
 5. Export a copy of the user's Termux world, import it, compare player,
    inventory, party, structures and multiple maps, then save/reload. Keep the
    original Termux installation unchanged until this passes.
-6. Verify signed upgrade on the handheld and retain an external save export.
+6. Keep an external save export for recovery.
 
 Broader Android/API and 16 KB native-page compatibility are separate targets.
-Do not call this a device-validated release based on the emulator alone.
+The 0.4 acquisition paths and signed upgrade were validated on the Pocket DMG;
+the broader gameplay and compatibility checks above are still outstanding.

@@ -9,16 +9,6 @@
     "libc": "glibc",
     "rootfs": "ubuntu-noble"
   },
-  "game": {
-    "version": "0.8.11",
-    "release_tag": "v0.8.11",
-    "entrypoint": "com.pkmngen.game.desktop.DesktopLauncher",
-    "archive_member": "pokewilds-v0.8.11-otherplatforms",
-    "required_files": [
-      "pokewilds.jar",
-      "README.txt"
-    ]
-  },
   "runtime": {
     "jre": {
       "vendor": "Eclipse Temurin",
@@ -143,15 +133,6 @@
     }
   },
   "inputs": [
-    {
-      "id": "game-v0.8.11",
-      "role": "game-release",
-      "url": "https://github.com/SheerSt/pokewilds/releases/download/v0.8.11/pokewilds-otherplatforms.zip",
-      "sha256": "5c0aca7f447ee6b4ed587f3ab2cefaf445219059d790862a7121c56a72fb22ba",
-      "format": "zip",
-      "extract_to": "game",
-      "official_provenance": "https://github.com/SheerSt/pokewilds/releases/tag/v0.8.11"
-    },
     {
       "id": "ubuntu-base-24.04.3-arm64",
       "role": "glibc-rootfs",
@@ -1405,7 +1386,6 @@
     "rootfs/usr/lib/aarch64-linux-gnu/libopenal.so.1",
     "rootfs/usr/bin/pactl",
     "rootfs/usr/bin/xdotool",
-    "rootfs/usr/local/bin/pokewilds-close",
-    "game/pokewilds.jar"
+    "rootfs/usr/local/bin/pokewilds-close"
   ]
 }

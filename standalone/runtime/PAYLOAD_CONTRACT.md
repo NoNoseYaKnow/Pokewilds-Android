@@ -6,14 +6,15 @@ step. It contains exactly these top-level entries:
 ```text
 payload-manifest.json  # generated manifest, including every archive member hash
 rootfs/                # ARM64 Linux/glibc guest filesystem
-game/                  # unmodified contents of the v0.8.11 other-platforms zip
 notices/               # upstream notices copied from the pinned inputs
 host/                  # optional Android host closure supplied by native build
 ```
 
-The Android supervisor owns the process that enters `rootfs/` and the paths
-under `game/`. Worlds, settings, logs, sockets, and runtime staging data are
-outside this archive and must never be added by the builder.
+The Android supervisor owns the process that enters `rootfs/`. Game files are
+acquired separately at first launch using the pinned source metadata in
+`standalone/packaging/game-source.json`; they are never included in this runtime
+archive. Worlds, settings, logs, sockets, and runtime staging data are outside
+this archive and must never be added by the builder.
 
 The service-facing guest paths are `/usr/bin/java`, `/usr/bin/xdotool`, and
 `/usr/local/bin/pokewilds-close`. The JRE itself is rooted at
@@ -31,10 +32,12 @@ each of its 131 official Ubuntu Ports `.deb` artifacts. The aggregate input
 has no URL because it is the checked-in set of those artifact URLs; it is not
 an instruction to read packages from a local machine.
 
-The initial lock names the official PokeWilds v0.8.11 archive, Canonical's
-Ubuntu Base 24.04.3 ARM64 archive, Eclipse Temurin JRE 17.0.15+6 for Linux
-AArch64, and the Ubuntu Noble ARM64 Mesa/X11 package closure needed by the
-known-good virpipe launch. Current Ubuntu Mesa names the DRI entrypoint
+The runtime lock names Canonical's Ubuntu Base 24.04.3 ARM64 archive, Eclipse
+Temurin JRE 17.0.15+6 for Linux AArch64, and the Ubuntu Noble ARM64 Mesa/X11
+package closure needed by the known-good virpipe launch. PokeWilds v0.8.11 is
+pinned separately in `standalone/packaging/game-source.json`, including both
+the upstream archive SHA-256 and the extracted JAR SHA-256. Current Ubuntu Mesa
+names the DRI entrypoint
 `virtio_gpu_dri.so`; this is the virpipe driver slot formerly called
 `virgl_dri.so`. The JRE and game digests are pinned from their official
 release assets, and every Ubuntu package version and digest is recorded in the
@@ -43,7 +46,7 @@ the builder uses the manifest filename when locating a cached artifact.
 
 `build-payload.sh` accepts a cache directory and writes a deterministic gzip
 tar archive plus a `payload.properties` sidecar containing the final archive
-SHA-256, expanded byte count, and persistent-game byte count. It verifies every
+SHA-256 and expanded byte count. The legacy `gameBytes` property is zero. It verifies every
 source before extraction, rejects absolute or escaping archive paths, rejects
 unsupported architectures, and emits a manifest containing the SHA-256 of
 every produced member. `verify-payload.sh` can be run independently by the
@@ -66,8 +69,9 @@ standalone/runtime/verify-payload.sh \
   standalone/runtime/build/assets/runtime.tar.gz
 ```
 
-The first payload build downloads the four pinned inputs and their package
-artifacts into the cache and verifies each digest. Add `--offline` on later
+The first payload build downloads the three pinned runtime inputs and their package
+artifacts into the cache and verifies each digest. The game ZIP is fetched by the
+Android app at first launch and checked against the APK's pinned game-source metadata. Add `--offline` on later
 rebuilds to require that cache to be complete. `--host-dir` is the separately
 built Android host closure from `standalone/native`; it is an explicit input,
 so a fresh machine must build that closure before invoking the command above.

@@ -34,6 +34,7 @@ NATIVE_LIBS = (
 # aapt2 treats a .gz asset as a compressed resource and strips the suffix.  The
 # build therefore uses .bin to preserve the gzip bytes exactly.
 PAYLOAD_ASSETS = ("assets/runtime.bin", "assets/runtime.tar.gz", "assets/runtime.tar")
+GAME_SOURCE_ASSET = "assets/game-source.json"
 CHUNK = 1024 * 1024
 ELF_AARCH64 = 183
 
@@ -124,6 +125,7 @@ def inspect_payload(zf: zipfile.ZipFile, member: str, errors: list[str]) -> dict
     found: set[str] = set()
     tar_entries = 0
     tar_bytes = 0
+    bundled_game = False
     try:
         with zf.open(member) as raw, gzip.GzipFile(fileobj=raw) as compressed, tarfile.open(fileobj=compressed, mode="r|") as archive:
             for entry in archive:
@@ -132,13 +134,14 @@ def inspect_payload(zf: zipfile.ZipFile, member: str, errors: list[str]) -> dict
                 if name is None:
                     errors.append(f"payload contains an unsafe path: {entry.name!r}")
                     continue
+                if name == "game" or name.startswith("game/"):
+                    bundled_game = True
                 if entry.isfile() and entry.size > 0:
                     tar_bytes += entry.size
                 if name in {
                     "rootfs/opt/pokewilds/jre/bin/java",
                     "rootfs/usr/bin/java",
                     "rootfs/usr/lib/jvm/pokewilds-jre/bin/java",
-                    "game/pokewilds.jar",
                     "rootfs/usr/local/bin/pokewilds-close",
                     "host/lib/libandroid-shmem.so",
                     "host/lib/libtalloc.so.2",
@@ -159,7 +162,6 @@ def inspect_payload(zf: zipfile.ZipFile, member: str, errors: list[str]) -> dict
             "rootfs/usr/bin/java",
             "rootfs/usr/lib/jvm/pokewilds-jre/bin/java",
         },
-        "game": {"game/pokewilds.jar"},
         "close-helper": {"rootfs/usr/local/bin/pokewilds-close"},
         "xkb": {"rootfs/usr/share/X11/xkb/"},
         "host-shmem": {"host/lib/libandroid-shmem.so"},
@@ -171,7 +173,47 @@ def inspect_payload(zf: zipfile.ZipFile, member: str, errors: list[str]) -> dict
     }
     missing = [label for label, choices in alternatives.items() if not found.intersection(choices)]
     errors.extend(f"payload missing required {label}" for label in missing)
-    return {"entries": tar_entries, "expandedFileBytes": tar_bytes, "found": sorted(found), "missing": missing}
+    if bundled_game:
+        errors.append("runtime payload contains bundled game files")
+    return {"entries": tar_entries, "expandedFileBytes": tar_bytes, "found": sorted(found), "missing": missing, "containsGame": bundled_game}
+
+
+def inspect_game_source(zf: zipfile.ZipFile, errors: list[str]) -> dict[str, object] | None:
+    try:
+        with zf.open(GAME_SOURCE_ASSET) as stream:
+            data = stream.read(64 * 1024 + 1)
+    except KeyError:
+        errors.append(f"missing {GAME_SOURCE_ASSET}")
+        return None
+    if len(data) > 64 * 1024:
+        errors.append(f"{GAME_SOURCE_ASSET} exceeds 64 KiB")
+        return None
+    try:
+        source = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        errors.append(f"{GAME_SOURCE_ASSET} is not valid UTF-8 JSON")
+        return None
+    if not isinstance(source, dict) or source.get("schema") != 1:
+        errors.append(f"{GAME_SOURCE_ASSET} has an unsupported schema")
+        return source if isinstance(source, dict) else None
+    for field in ("version", "url", "archiveMember"):
+        if not isinstance(source.get(field), str) or not source[field]:
+            errors.append(f"{GAME_SOURCE_ASSET} is missing {field}")
+    for field in ("sha256", "jarSha256"):
+        if not isinstance(source.get(field), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", source[field]):
+            errors.append(f"{GAME_SOURCE_ASSET} has an invalid {field}")
+    if not isinstance(source.get("url"), str) or not source.get("url", "").startswith("https://"):
+        errors.append(f"{GAME_SOURCE_ASSET} url must use HTTPS")
+    required = source.get("requiredFiles")
+    if not isinstance(required, list) or "pokewilds.jar" not in required or any(not isinstance(item, str) or not item for item in required):
+        errors.append(f"{GAME_SOURCE_ASSET} requiredFiles must include pokewilds.jar")
+    try:
+        expected = json.loads((Path(__file__).with_name("game-source.json")).read_text(encoding="utf-8"))
+        if source != expected:
+            errors.append(f"{GAME_SOURCE_ASSET} does not match the pinned packaging/game-source.json")
+    except (OSError, json.JSONDecodeError):
+        errors.append("cannot read pinned packaging/game-source.json")
+    return {"version": source.get("version"), "url": source.get("url"), "sha256": source.get("sha256"), "jarSha256": source.get("jarSha256"), "archiveMember": source.get("archiveMember"), "requiredFiles": required}
 
 
 def inspect_manifest(aapt2: str | None, apk: str, result: dict[str, object], errors: list[str], warnings: list[str]) -> None:
@@ -230,6 +272,11 @@ def verify(apk_path: Path, aapt2: str | None, apksigner: str | None) -> tuple[di
     try:
         with zipfile.ZipFile(apk_path) as zf:
             names = set(zf.namelist())
+            direct_game_files = sorted(name for name in names if name.startswith("assets/") and (
+                name.startswith("assets/game/") or name.endswith("/pokewilds.jar")
+                or name.endswith("/pokewilds-otherplatforms.zip")))
+            if direct_game_files:
+                errors.append("APK contains direct game files: " + ", ".join(direct_game_files[:5]))
             native_result = result["native"]
             assert isinstance(native_result, list)
             for library in NATIVE_LIBS:
@@ -247,6 +294,7 @@ def verify(apk_path: Path, aapt2: str | None, apksigner: str | None) -> tuple[di
             if unexpected_abis:
                 errors.append("unexpected native ABIs: " + ", ".join(unexpected_abis))
             properties = read_properties(zf, errors)
+            result["gameSource"] = inspect_game_source(zf, errors)
             payload_member = next((name for name in PAYLOAD_ASSETS if name in names), None)
             if payload_member is None:
                 errors.append("missing assets/runtime.tar.gz (or compatibility name assets/runtime.tar)")

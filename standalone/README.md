@@ -1,11 +1,14 @@
 # Standalone APK prototype
 
-This app packages the unchanged PokeWilds 0.8.11 release with a private Linux
-guest payload and Android host artifacts. It is a working standalone prototype
-tested on the Pocket DMG running Android 13.
+This app packages the Linux runtime and Android host artifacts for PokeWilds
+0.8.11. It does not package the game itself. On first launch, users can fetch
+the pinned official release or select a copy of those official game files they
+already have; the app installs those files into its private storage. It is a
+working standalone prototype tested on the Pocket DMG running Android 13.
 
-There is currently no public APK download. The build instructions below can
-produce a local APK.
+The signed APK is available from the
+[v0.4.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.4.0).
+The build instructions below can produce a local APK.
 
 The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
 surface, accelerated VirGL through ANGLE Vulkan, and bundled PulseAudio.
@@ -59,7 +62,8 @@ unset POKEWILDS_CLOSE_HELPER
 
 The entrypoint prepares the pinned Termux:X11 source, assembles the locked
 Android host package closure, builds Android PRoot, creates the deterministic
-runtime archive, runs the debug unit tests, and assembles the debug APK. The
+runtime archive (without game files), runs the debug unit tests, and assembles
+the debug APK. The
 APK is written to:
 
 ```text
@@ -183,10 +187,18 @@ The checked-in source and recipes can be published independently of the game
 APK. See [upstream provenance and notices](UPSTREAM.md) before redistributing
 bundled third-party artifacts.
 
-## Playing and backups
+## First launch, playing, and backups
 
-Install the APK and choose **Start / resume** on first launch. Preparation is
-local and shows progress. Subsequent ordinary launches start the game directly.
+The APK contains no PokeWilds game archive or assets. On first launch, the app
+starts downloading the pinned PokeWilds 0.8.11 release from the
+[official GitHub release page](https://github.com/SheerSt/pokewilds/releases/tag/v0.8.11).
+The download is verified before installation. Alternatively, choose **Choose
+game ZIP** or **Choose game folder** to select an archive or extracted copy you already
+have. A selected ZIP must match the pinned release archive; an extracted folder
+is checked for the expected game files. The app copies verified files into its
+app-private storage and does not require Termux or another runtime app. Setup reports progress and the
+download can be cancelled. The game starts after setup; subsequent ordinary
+launches start it directly.
 Long-press the Android launcher icon and choose **App settings** to open settings,
 import/export, recovery, and startup logs. The running notification also opens
 this screen. Android Back in the game also offers **App settings**. ES-DE can import the app as a normal Android game; its actual
@@ -201,7 +213,10 @@ session and discards unsaved progress. Home leaves the session running; do not
 assume the game autosaves.
 
 Use **Export saves** after saving and quitting, then choose a location in the
-Android document picker. Uninstalling removes private worlds: export first.
+Android document picker. Uninstalling removes the privately stored game files
+and worlds: export saves first. App-private storage is not shared with other
+apps; selecting a ZIP or folder uses Android's document picker to grant access
+to that source.
 [Migration instructions](migration/README.md) explain copying current 0.8.11
 JSON saves from Termux. Legacy Kryo saves are not supported by this importer.
 Imports preserve existing settings, refuse world-name collisions, merge
@@ -215,9 +230,11 @@ loader; those host executables live in Android's extracted native-library
 directory. Guest Java and libraries remain app-private. No external command
 permission, Termux package, root, or on-device package installation is needed.
 
-`INTERNET` remains available to the unchanged desktop game's networking code;
-o runtime download is performed. X11 disables TCP listening, and VirGL and
-audio use app-private Unix sockets. Multiplayer/network behavior is untested.
+`INTERNET` is used for the user initiated game download and remains available
+to the unchanged desktop game's networking code. Runtime components are
+packaged in the APK; the app does not download them. X11 disables TCP
+listening, and VirGL and audio use app-private Unix sockets.
+Multiplayer/network behavior is untested.
 The app requests the foreground-service capability to supervise an active game.
 Android versions beyond the tested API, including 16 KB page-size devices, need
 separate execution and native-library checks.

@@ -1,8 +1,11 @@
 # PokeWilds for Android
 
-A standalone Android APK for the unchanged PokeWilds 0.8.11 game. The APK
-includes its own game runtime, display, graphics bridge, and audio support.
-It does not need a companion app or a separate runtime installation.
+A standalone Android app for PokeWilds 0.8.11. The APK includes the Linux
+runtime, display, graphics bridge, and audio support, but does not include the
+PokeWilds game files. On first launch, download the pinned official game
+release or select a game ZIP or extracted game folder that you already have.
+The app copies the game files into its private storage. No companion app or
+separate runtime installation is needed.
 
 The current build targets ARM64 Android 13 and has been exercised on the
 AYANEO Pocket DMG. Support for other devices and Android versions needs
@@ -10,13 +13,18 @@ separate testing. This is still a prototype, not a general Android release.
 
 ## Install and play
 
-There is currently no public standalone APK download. To make a local build,
-see [Build from source](#build-from-source).
+Download the signed Android APK from the
+[v0.4.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.4.0),
+or see [Build from source](#build-from-source) to build it locally.
 
-Open **PokeWilds** and choose **Start / resume** on the first launch. The app
-prepares its bundled files locally and shows progress. Later launches open the
-game directly. The APK can also be imported into Android game frontends as a
-normal app.
+On first launch, the app starts downloading the pinned PokeWilds 0.8.11 release
+from its [official GitHub release page](https://github.com/SheerSt/pokewilds/releases/tag/v0.8.11).
+You can cancel or retry the download, or choose **Choose game ZIP** or **Choose game folder** and select
+a copy of the official 0.8.11 files that you already have. The ZIP must match
+the pinned release archive; an extracted folder is checked for the expected
+game files. Setup shows progress. Once it finishes, **Start / resume** opens the game; later
+launches go straight to the game. The APK can also be imported into Android
+game frontends as a normal app.
 
 The D-pad or left stick moves, A and B act as the game's action buttons, Start
 opens PokeWilds's in-game menu, and L1/R1 provide C/V. For phones,
@@ -44,7 +52,7 @@ game session starts. Stop the game before changing runtime or game settings.
 Use **Export saves** after saving and quitting, then choose a destination in
 Android's document picker. **Import saves** accepts compatible PokeWilds 0.8.11
 JSON save archives. Export worlds before uninstalling: uninstalling removes the
-app's private game data. See [save migration](standalone/migration/README.md)
+app's private game files and saves. See [save migration](standalone/migration/README.md)
 for transferring existing worlds.
 
 ## Build from source
@@ -62,7 +70,8 @@ This assembles a debug APK at
 release build needs a private signing key; follow the guide's
 [signed local build](standalone/README.md#signed-local-build) instructions.
 
-The APK packages third-party components. Review the
+The APK packages third-party runtime components but no PokeWilds game files.
+Review the
 [upstream provenance and notices](standalone/UPSTREAM.md) before distributing
 a build. Implementation details and validation evidence are in
 [the standalone guide](standalone/README.md) and

@@ -3,16 +3,19 @@
 This file records where the standalone APK gets its upstream material and
 what a generated payload actually carries. It is an engineering inventory,
 not a legal opinion or a determination that the PokeWilds release may be
-redistributed. Every downloaded payload input is checked against the SHA-256
-in [`runtime/manifest.json`](runtime/manifest.json). The generated
-`notices/SOURCES.json` repeats those URLs and digests inside the runtime
-archive.
+redistributed. The APK and generated runtime payload do not contain PokeWilds
+game files. The app starts a first-launch download of the pinned official
+release, or accepts a user selected ZIP or extracted game folder. Runtime
+payload inputs are checked against the SHA-256 values in
+[`runtime/manifest.json`](runtime/manifest.json). The generated
+`notices/SOURCES.json` repeats those runtime input URLs and digests inside the
+runtime archive.
 
 ## Inputs and provenance
 
 | Material | Pinned input | Enters the build as | Notice/source evidence |
 | --- | --- | --- | --- |
-| PokeWilds | `v0.8.11` release asset, SHA-256 `5c0aca7f447ee6b4ed587f3ab2cefaf445219059d790862a7121c56a72fb22ba` | The `pokewilds-v0.8.11-otherplatforms` directory under `game/`, unchanged | The archive has `README.txt`; the JAR has `META-INF/LICENSE` and `META-INF/NOTICE` for dependencies. The release and the inspected `v0.8.11` repository tree do not provide a PokeWilds project license or redistribution grant. |
+| PokeWilds | First-launch fetch from the [official `v0.8.11` release](https://github.com/SheerSt/pokewilds/releases/tag/v0.8.11), asset `pokewilds-otherplatforms.zip`, SHA-256 `5c0aca7f447ee6b4ed587f3ab2cefaf445219059d790862a7121c56a72fb22ba`; users may instead select a copy of those official files as a ZIP or extracted folder | Acquired on device after install and stored in app-private game storage; not copied into the APK or runtime payload. The download and selected ZIP are checked against the release hash; an extracted folder's game JAR is checked against the pinned JAR hash. | The release archive has `README.txt`; the JAR has `META-INF/LICENSE` and `META-INF/NOTICE` for dependencies. The release and inspected `v0.8.11` repository tree do not provide a PokeWilds project license or redistribution grant. This provenance record does not establish permission to redistribute the game or its assets. |
 | Ubuntu guest base | Ubuntu Base 24.04.3 ARM64, SHA-256 `7b2dced6dd56ad5e4a813fa25c8de307b655fdabc6ea9213175a92c48dabb048` | `rootfs/` | Files supplied by the base archive remain in `rootfs`, including its package documentation where present. |
 | Ubuntu guest packages | 133 exact Ubuntu Ports `.deb` artifacts listed under `ubuntu-noble-mesa-x11-arm64-package-closure` | Extracted data files under `rootfs/` | Extraction retains each package's `/usr/share/doc/<package>/copyright` and other shipped documentation. The manifest and `notices/SOURCES.json` retain each artifact URL, version, architecture, and digest. No package installer scripts run. |
 | Eclipse Temurin | Linux AArch64 JRE `17.0.15+6`, SHA-256 `c89467f543bd434b71f3b748adeeeb1b2692f90242824b78205be1ae72ba385f` | `/opt/pokewilds/jre` inside `rootfs/` | The archive contains `NOTICE` and the per-module `legal/*/LICENSE` files; these are preserved by extraction. |
@@ -32,8 +35,8 @@ game's terms, and do not replace each component's copyright and license text.
 
 The payload builder currently does the following:
 
-1. It extracts the Ubuntu base, Ubuntu `.deb` data, game release, and JRE
-   without deleting their embedded documentation.
+1. It extracts the Ubuntu base, Ubuntu `.deb` data, and JRE without deleting
+   their embedded documentation. It does not include the PokeWilds release.
 2. It copies the Termux host tree's `share/` directory, which is why the
    generated archive includes `host/share/doc/*` for the package closure.
 3. It writes `notices/SOURCES.json` with the manifest input list, URLs, and
@@ -55,9 +58,11 @@ prove that every binary in the APK has a complete corresponding-source offer.
 The following must be resolved before publishing a distributable standalone
 APK:
 
-- Obtain and record the applicable PokeWilds game and asset terms. The public
-  release hash proves which artifact is used; it does not grant permission to
-  redistribute the game, bundled assets, or a combined APK.
+- The game files are fetched directly to the device on first launch, or
+  supplied by the user through the document picker.
+  The pinned hash establishes the official download's identity; it does not
+  grant permission to redistribute the game or its assets. This app build
+  contains neither. Keep that distinction clear in any release description.
 - Ship or make available the corresponding source for the rebuilt PRoot,
   talloc, and libandroid-shmem binaries, including the checked-in patches.
   Their APK notice texts are now present, but build caches are not source

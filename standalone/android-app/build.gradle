@@ -14,8 +14,8 @@ android {
         // Android 13 is the first target. The complete guest JVM launch is
         // verified at target 33; broader Android versions need separate gates.
         targetSdk = Integer.parseInt(project.findProperty('runtimeTargetSdk') ?: '33')
-        versionCode 3
-        versionName '0.3-prototype'
+        versionCode 4
+        versionName '0.4'
         buildConfigField 'String', 'RUNTIME_GRAPHICS', '"' + runtimeGraphics + '"'
         ndk { abiFilters 'arm64-v8a' }
     }
@@ -57,6 +57,7 @@ tasks.register('prepareRuntimeAssets', Sync) {
         include 'runtime.tar.gz', 'payload.properties'
         rename 'runtime.tar.gz', 'runtime.bin'
     }
+    from('../packaging/game-source.json')
     into('../runtime/build/android-assets')
 }
 tasks.named('preBuild').configure { dependsOn('prepareRuntimeAssets') }

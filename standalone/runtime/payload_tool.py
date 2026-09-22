@@ -218,6 +218,9 @@ def validate_lock(manifest: dict) -> list[str]:
         return errors
     for item in inputs:
         item_id = item.get("id", "<unnamed>")
+        extract_to = str(item.get("extract_to", "")).strip("/")
+        if item.get("role") == "game-release" or extract_to == "game" or extract_to.startswith("game/"):
+            errors.append(f"{item_id}: game files must be acquired separately from the runtime payload")
         digest = item.get("sha256")
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest.lower()):
             errors.append(f"{item_id}: missing pinned SHA-256")
@@ -402,7 +405,6 @@ def build(args: argparse.Namespace) -> int:
         generated["members_sha256"] = archive_member_hashes(staging)
         (staging / "payload-manifest.json").write_text(json.dumps(generated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         expanded_bytes = sum(path.stat().st_size for path in staging.rglob("*") if path.is_file() and not path.is_symlink())
-        game_bytes = sum(path.stat().st_size for path in (staging / "game").rglob("*") if path.is_file() and not path.is_symlink())
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary_output = output.with_suffix(output.suffix + ".tmp")
         temporary_output.unlink(missing_ok=True)
@@ -413,7 +415,7 @@ def build(args: argparse.Namespace) -> int:
             "schema=1\n"
             f"sha256={sha256(output)}\n"
             f"expandedBytes={expanded_bytes}\n"
-            f"gameBytes={game_bytes}\n"
+            "gameBytes=0\n"
             f"payloadId={manifest['payload_id']}\n",
             encoding="utf-8",
         )
@@ -433,6 +435,10 @@ def verify_archive(args: argparse.Namespace) -> int:
         try:
             extract_tar(archive, destination)
             manifest = json.loads((destination / "payload-manifest.json").read_text(encoding="utf-8"))
+            if any(name == "game" or name.startswith("game/") for name in archive_member_hashes(destination)):
+                raise PayloadError("runtime payload must not contain game files")
+            if any(item.get("role") == "game-release" for item in manifest.get("inputs", [])):
+                raise PayloadError("runtime payload manifest includes a game release input")
             required_paths_exist(destination, manifest)
             expected = manifest.get("members_sha256", {})
             actual = archive_member_hashes(destination)

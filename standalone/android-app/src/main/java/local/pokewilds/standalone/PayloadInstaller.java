@@ -21,12 +21,12 @@ final class PayloadInstaller {
         long expanded = Long.parseLong(manifest.getProperty("expandedBytes"));
         if (expanded <= 0 || expanded > 8L*1024*1024*1024) throw new IOException("Invalid payload size");
         long gameBytes = Long.parseLong(manifest.getProperty("gameBytes", "0"));
-        if (gameBytes < 0 || gameBytes > expanded) throw new IOException("Invalid game payload size");
+        if (gameBytes != 0) throw new IOException("Bundled runtime must not contain game files");
         // Reclaim an interrupted attempt before checking the space needed to retry.
         File stage = new File(base, ".preparing");
         SafeTar.deleteTree(stage.toPath());
         // Include inode/block overhead measured on the emulator's app storage.
-        if (base.getUsableSpace() < expanded + gameBytes + 384L*1024*1024) throw new IOException("Not enough space to prepare game files");
+        if (base.getUsableSpace() < expanded + 384L*1024*1024) throw new IOException("Not enough space to prepare runtime files");
         stage.mkdirs();
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

@@ -67,12 +67,12 @@ public final class RuntimeService extends Service {
                 out.println("PokeWilds 0.8.11; target SDK " + getApplicationInfo().targetSdkVersion
                     + "; graphics=" + options.graphics + "; viewport=" + options.width + "x" + options.height);
             }
-            status = "Preparing bundled game files…";
+            if (!GameInstaller.isInstalled(this)) throw new IOException("Game files are not installed; open the launcher to download or select them");
+            status = "Preparing bundled runtime files…";
             runtime = PayloadInstaller.install(this, () -> stopping || Thread.currentThread().isInterrupted());
             if (stopping) throw new InterruptedException("Startup cancelled");
             File game = new File(getFilesDir(), "game");
             SaveArchive.recoverInterruptedImport(game.toPath());
-            DistributionSeeder.ensure(new File(runtime, "game").toPath(), game.toPath(), runtime.getName());
             for (String name : new String[]{"libproot.so", "libproot-loader.so", "libvirgl_test_server_android.so", "libpulseaudio.so"}) {
                 if (!new File(nativeDir, name).isFile()) throw new IOException("Build is missing native runtime component: " + name);
             }

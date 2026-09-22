@@ -33,19 +33,24 @@ class PayloadBuilderTest(unittest.TestCase):
                 capture_output=True,
             )
         self.assertEqual(result.returncode, 2)
-        self.assertIn("game-v0.8.11: missing pinned SHA-256", result.stderr)
+        self.assertIn("ubuntu-base-24.04.3-arm64: missing pinned SHA-256", result.stderr)
         self.assertIn("package closure has no pinned artifact list", result.stderr)
+
+    def test_game_release_cannot_be_added_to_runtime_inputs(self):
+        manifest = json.loads(LOCK.read_text(encoding="utf-8"))
+        manifest["inputs"].append({"id": "game", "role": "game-release", "url": "https://example.invalid/game.zip", "sha256": "0" * 64, "format": "zip", "extract_to": "game"})
+        from importlib.util import spec_from_file_location, module_from_spec
+        spec = spec_from_file_location("payload_tool", TOOL)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+        self.assertTrue(any("game files must be acquired separately" in error for error in module.validate_lock(manifest)))
 
     def test_fixture_build_is_offline_deterministic_and_verifiable(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             cache = root / "cache"
             cache.mkdir()
-
-            game = cache / "game"
-            with zipfile.ZipFile(game, "w") as archive:
-                archive.writestr("pokewilds-v0.8.11-otherplatforms/pokewilds.jar", b"fixture-game")
-                archive.writestr("pokewilds-v0.8.11-otherplatforms/README.txt", b"fixture")
 
             base = cache / "base"
             with tarfile.open(base, "w:gz") as archive:
@@ -73,9 +78,7 @@ class PayloadBuilderTest(unittest.TestCase):
                 "schema": 1,
                 "payload_id": "fixture",
                 "target": {"arch": "aarch64", "abi": "arm64-v8a", "os": "linux", "libc": "glibc", "rootfs": "fixture"},
-                "game": {"version": "0.8.11", "release_tag": "v0.8.11", "archive_member": "pokewilds-v0.8.11-otherplatforms"},
                 "inputs": [
-                    {"id": "game", "url": "https://example.invalid/game", "sha256": digest(game), "format": "zip", "extract_to": "game"},
                     {"id": "base", "url": "https://example.invalid/base", "sha256": digest(base), "format": "tar.gz", "extract_to": "rootfs"},
                     {"id": "jre", "url": "https://example.invalid/jre", "sha256": digest(jre), "format": "tar.gz", "extract_to": "rootfs/opt/pokewilds/jre", "strip_components": 1},
                 ],
@@ -85,7 +88,6 @@ class PayloadBuilderTest(unittest.TestCase):
                     "rootfs/opt/pokewilds/jre/bin/java",
                     "rootfs/opt/pokewilds/jre/lib/server/libjvm.so",
                     "rootfs/usr/bin/java",
-                    "game/pokewilds.jar",
                 ],
             }
             manifest_path = root / "manifest.json"
@@ -109,9 +111,12 @@ class PayloadBuilderTest(unittest.TestCase):
             properties = (root / "payload.properties").read_text(encoding="utf-8")
             self.assertIn(f"sha256={digest(output)}", properties)
             self.assertIn("expandedBytes=", properties)
+            self.assertIn("gameBytes=0", properties)
             expanded = int(next(line.split("=", 1)[1] for line in properties.splitlines() if line.startswith("expandedBytes=")))
             with tarfile.open(output, "r:gz") as archive:
-                archive_bytes = sum(member.size for member in archive.getmembers() if member.isfile())
+                members = archive.getmembers()
+                archive_bytes = sum(member.size for member in members if member.isfile())
+                self.assertFalse(any(member.name == "game" or member.name.startswith("game/") for member in members))
             self.assertGreaterEqual(expanded, archive_bytes)
 
             tampered = root / "tampered.tar.gz"

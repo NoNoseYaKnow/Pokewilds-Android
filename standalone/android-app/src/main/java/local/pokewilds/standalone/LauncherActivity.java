@@ -8,26 +8,50 @@ import android.widget.Button;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
 public final class LauncherActivity extends Activity {
     public static final String MANAGE_SAVES_EXTRA = "local.pokewilds.standalone.MANAGE_SAVES";
+    private static boolean autoDownloadAttempted;
     private final Handler handler = new Handler();
     private TextView statusView;
+    private LinearLayout acquisitionPanel;
+    private LinearLayout gamePanel;
+    private Button downloadButton;
+    private Button localZipButton;
+    private Button localFolderButton;
+    private Button cancelAcquisitionButton;
     private boolean openedGame;
     private boolean managementMode;
     private boolean manuallyStarted;
+    private boolean gameStartRequested;
     private Spinner graphicsControl;
     private Spinner viewportControl;
     private Spinner touchControl;
     private final java.util.concurrent.ExecutorService files = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
-            statusView.setText(RuntimeService.status);
+            boolean gameInstalled = GameInstaller.isInstalled(LauncherActivity.this);
+            if (!gameInstalled) {
+                showAcquisitionPanel();
+                statusView.setText(GameAcquisitionService.status);
+                boolean acquiring = GameAcquisitionService.active;
+                downloadButton.setEnabled(!acquiring);
+                localZipButton.setEnabled(true);
+                localFolderButton.setEnabled(true);
+                cancelAcquisitionButton.setEnabled(acquiring);
+                if (!managementMode && "Game files ready".equals(GameAcquisitionService.status)) startGame();
+            } else {
+                showGamePanel();
+                statusView.setText(RuntimeService.status);
+                if (!managementMode && !gameStartRequested && !GameAcquisitionService.active) startGame();
+            }
             if (openedGame && !RuntimeService.active && "Game closed".equals(RuntimeService.status)) {
                 openedGame = false;
                 manuallyStarted = false;
+                gameStartRequested = false;
                 if (!managementMode) { finishAndRemoveTask(); return; }
             }
             if (RuntimeService.displayReady && !openedGame && (!managementMode || manuallyStarted)) {
@@ -41,23 +65,44 @@ public final class LauncherActivity extends Activity {
     };
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        autoDownloadAttempted = getPreferences(MODE_PRIVATE).getBoolean("auto-download-attempted", false);
         managementMode = isManagementIntent(getIntent());
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(32, 48, 32, 32);
         TextView title = new TextView(this); title.setText("PokeWilds"); title.setTextSize(30); layout.addView(title);
-        statusView = new TextView(this); statusView.setTextSize(18); statusView.setText(RuntimeService.status); layout.addView(statusView);
+        statusView = new TextView(this); statusView.setTextSize(18); statusView.setText(GameAcquisitionService.status); layout.addView(statusView);
+        acquisitionPanel = new LinearLayout(this); acquisitionPanel.setOrientation(LinearLayout.VERTICAL);
+        TextView acquisitionHelp = new TextView(this);
+        acquisitionHelp.setText("Game files are needed before you can play. Download them or choose a local game ZIP or extracted game folder.");
+        acquisitionPanel.addView(acquisitionHelp);
+        downloadButton = new Button(this); downloadButton.setText("Download game files");
+        downloadButton.setOnClickListener(v -> startAcquisition(GameAcquisitionService.DOWNLOAD, null));
+        acquisitionPanel.addView(downloadButton);
+        localZipButton = new Button(this); localZipButton.setText("Choose game ZIP");
+        localZipButton.setOnClickListener(v -> chooseLocalZip()); acquisitionPanel.addView(localZipButton);
+        localFolderButton = new Button(this); localFolderButton.setText("Choose game folder");
+        localFolderButton.setOnClickListener(v -> chooseLocalFolder()); acquisitionPanel.addView(localFolderButton);
+        cancelAcquisitionButton = new Button(this); cancelAcquisitionButton.setText("Cancel setup");
+        cancelAcquisitionButton.setOnClickListener(v -> startAcquisition(GameAcquisitionService.CANCEL, null));
+        acquisitionPanel.addView(cancelAcquisitionButton);
+        Button earlyImport = new Button(this); earlyImport.setText("Import saves");
+        earlyImport.setOnClickListener(v -> chooseSaveImport());
+        acquisitionPanel.addView(earlyImport);
+        layout.addView(acquisitionPanel);
+
+        gamePanel = new LinearLayout(this); gamePanel.setOrientation(LinearLayout.VERTICAL);
         Button start = new Button(this); start.setText("Start / resume");
-        start.setOnClickListener(v -> { openedGame = false; manuallyStarted = true; startGame(); }); layout.addView(start);
+        start.setOnClickListener(v -> { openedGame = false; manuallyStarted = true; startGame(); }); gamePanel.addView(start);
         Button forceStop = new Button(this); forceStop.setText("Force-stop recovery");
-        forceStop.setOnClickListener(v -> confirmForceStop()); layout.addView(forceStop);
+        forceStop.setOnClickListener(v -> confirmForceStop()); gamePanel.addView(forceStop);
         Button quit = new Button(this); quit.setText("Quit game");
-        quit.setOnClickListener(v -> openGameForQuit()); layout.addView(quit);
+        quit.setOnClickListener(v -> openGameForQuit()); gamePanel.addView(quit);
         if (managementMode) {
-            addRuntimeControls(layout);
+            addRuntimeControls(gamePanel);
             Button gameSettings = new Button(this); gameSettings.setText("PokeWilds game settings");
             gameSettings.setOnClickListener(v -> startActivity(new Intent(this, GameSettingsActivity.class)));
-            layout.addView(gameSettings);
+            gamePanel.addView(gameSettings);
         }
         Button logs = new Button(this); logs.setText("View startup log");
         logs.setOnClickListener(v -> {
@@ -73,39 +118,118 @@ public final class LauncherActivity extends Activity {
                 }
             } catch (Exception e) { text = "No startup log yet."; }
             new android.app.AlertDialog.Builder(this).setTitle("Startup log").setMessage(text).setPositiveButton("Close", null).show();
-        }); layout.addView(logs);
+        }); gamePanel.addView(logs);
         Button export = new Button(this); export.setText("Export saves");
         export.setOnClickListener(v -> {
             if (RuntimeService.active) { RuntimeService.status = "Save and quit the game before exporting."; return; }
             startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/zip").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"pokewilds-saves.zip"), 10);
-        }); layout.addView(export);
+        }); gamePanel.addView(export);
         Button importButton = new Button(this); importButton.setText("Import saves");
-        importButton.setOnClickListener(v -> {
-            if (RuntimeService.active) { RuntimeService.status = "Quit the game before importing."; return; }
-            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip").addCategory(Intent.CATEGORY_OPENABLE), 11);
-        }); layout.addView(importButton);
-        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        importButton.setOnClickListener(v -> chooseSaveImport()); gamePanel.addView(importButton);
+        layout.addView(gamePanel);
+        ScrollView scroll = new ScrollView(this);
         scroll.addView(layout); setContentView(scroll);
-        if (!managementMode && new java.io.File(getFilesDir(), "game/pokewilds.jar").isFile()) startGame();
+        if (GameInstaller.isInstalled(this)) {
+            showGamePanel();
+            if (!managementMode && !GameAcquisitionService.active) startGame();
+        } else {
+            showAcquisitionPanel();
+            maybeStartAutoDownload();
+        }
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
-        if (RuntimeService.active) { RuntimeService.status = "Quit the game first."; return; }
-        RuntimeService.status = request == 10 ? "Exporting saves…" : "Importing saves…";
+        if (request == 12 || request == 13) {
+            android.net.Uri source = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(source,
+                    data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
+            } catch (SecurityException ignored) { /* This provider did not offer persistent access. */ }
+            startAcquisition(request == 12 ? GameAcquisitionService.LOCAL_ZIP : GameAcquisitionService.LOCAL_FOLDER, source);
+            return;
+        }
+        if (RuntimeService.active) { setSaveStatus("Quit the game first."); return; }
+        setSaveStatus(request == 10 ? "Exporting saves…" : "Importing saves…");
         files.submit(() -> {
-            if (!RuntimeService.DATA_LOCK.tryAcquire()) { RuntimeService.status = "Quit the game before transferring saves."; return; }
+            if (!RuntimeService.DATA_LOCK.tryAcquire()) { setSaveStatus("Wait for game setup or quit the game before transferring saves."); return; }
             try {
                 java.nio.file.Path game = new java.io.File(getFilesDir(), "game").toPath();
                 if (request == 10) SaveArchive.exportTo(game,getContentResolver().openOutputStream(data.getData()));
                 else SaveArchive.importFrom(getContentResolver().openInputStream(data.getData()), game);
-                RuntimeService.status = request == 10 ? "Saves exported" : "Saves imported";
-            } catch (Exception e) { RuntimeService.status = "Save transfer failed: " + e.getMessage(); }
+                setSaveStatus(request == 10 ? "Saves exported" : "Saves imported");
+            } catch (Exception e) { setSaveStatus("Save transfer failed: " + e.getMessage()); }
             finally { RuntimeService.DATA_LOCK.release(); }
         });
     }
     @Override protected void onDestroy() { files.shutdown(); super.onDestroy(); }
-    private void startGame() { startForegroundService(new Intent(this, RuntimeService.class)); }
+    private void startGame() {
+        if (!GameInstaller.isInstalled(this)) return;
+        gameStartRequested = true;
+        startForegroundService(new Intent(this, RuntimeService.class));
+    }
+
+    private void chooseLocalZip() {
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip")
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(picker, 12);
+    }
+
+    private void chooseSaveImport() {
+        if (RuntimeService.active) { setSaveStatus("Quit the game before importing."); return; }
+        if (GameAcquisitionService.active) { setSaveStatus("Cancel or finish game setup before importing saves."); return; }
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip")
+            .addCategory(Intent.CATEGORY_OPENABLE), 11);
+    }
+
+    private void setSaveStatus(String value) {
+        RuntimeService.status = value;
+        GameAcquisitionService.status = value;
+    }
+
+    private void chooseLocalFolder() {
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(picker, 13);
+    }
+
+    private void startAcquisition(String action, android.net.Uri source) {
+        if (GameAcquisitionService.DOWNLOAD.equals(action)) markDownloadAttempted();
+        Intent intent = new Intent(this, GameAcquisitionService.class).setAction(action);
+        if (source != null) intent.setData(source).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (GameAcquisitionService.CANCEL.equals(action)) startService(intent);
+        else startForegroundService(intent);
+        showAcquisitionPanel();
+        if (GameAcquisitionService.CANCEL.equals(action)) statusView.setText("Cancelling game file setup…");
+        else statusView.setText(source == null ? "Starting game file setup…" : "Importing local game files…");
+    }
+
+    private void showAcquisitionPanel() {
+        if (acquisitionPanel != null) acquisitionPanel.setVisibility(android.view.View.VISIBLE);
+        if (gamePanel != null) gamePanel.setVisibility(android.view.View.GONE);
+    }
+
+    private void markDownloadAttempted() {
+        autoDownloadAttempted = true;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("auto-download-attempted", true).apply();
+    }
+
+    private void maybeStartAutoDownload() {
+        if (GameAcquisitionService.active) { markDownloadAttempted(); return; }
+        if (autoDownloadAttempted) return;
+        if (new java.io.File(getFilesDir(), "game/pokewilds.jar").isFile()) {
+            markDownloadAttempted();
+            GameAcquisitionService.status = "Existing game files differ from the official release. Choose Download game files or local files to replace them; saves and settings will be kept.";
+            return;
+        }
+        startAcquisition(GameAcquisitionService.DOWNLOAD, null);
+    }
+
+    private void showGamePanel() {
+        if (acquisitionPanel != null) acquisitionPanel.setVisibility(android.view.View.GONE);
+        if (gamePanel != null) gamePanel.setVisibility(android.view.View.VISIBLE);
+    }
 
     private void addRuntimeControls(LinearLayout layout) {
         RuntimeOptions options = RuntimeOptions.read(this);
@@ -215,7 +339,11 @@ public final class LauncherActivity extends Activity {
         managementMode = nextManagementMode;
         manuallyStarted = false;
         openedGame = false;
-        if (!managementMode) startGame();
+        gameStartRequested = false;
+        if (!managementMode && GameInstaller.isInstalled(this) && !GameAcquisitionService.active) startGame();
+        else if (!GameInstaller.isInstalled(this)) {
+            maybeStartAutoDownload();
+        }
     }
     @Override protected void onResume() { super.onResume(); handler.post(refresh); }
     @Override protected void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
