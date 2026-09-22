@@ -15,6 +15,7 @@ public final class RuntimeService extends Service {
     static volatile String status = "Ready";
     static volatile boolean running;
     static volatile boolean active;
+    static volatile boolean displayFocused;
     static volatile boolean displayReady;
     static volatile boolean surfaceReady;
     static final Semaphore DATA_LOCK = new Semaphore(1);
@@ -23,6 +24,7 @@ public final class RuntimeService extends Service {
     private Future<?> session;
     private volatile File runtime;
     private File tmp, log, nativeDir;
+    private RuntimeOptions options;
     private volatile boolean stopping;
     private volatile boolean forcedStop;
 
@@ -58,15 +60,17 @@ public final class RuntimeService extends Service {
     }
     private void runSession() {
         try {
-            Files.write(log.toPath(), new byte[0]);
+            options = RuntimeOptions.read(this);
+            try (PrintWriter out = new PrintWriter(log)) {
+                out.println("PokeWilds 0.8.11; target SDK " + getApplicationInfo().targetSdkVersion
+                    + "; graphics=" + options.graphics + "; viewport=" + options.width + "x" + options.height);
+            }
             status = "Preparing bundled game files…";
             runtime = PayloadInstaller.install(this, () -> stopping || Thread.currentThread().isInterrupted());
             if (stopping) throw new InterruptedException("Startup cancelled");
             File game = new File(getFilesDir(), "game");
-            if (!new File(game, ".distribution-ready").isFile()) {
-                copyGame(new File(runtime, "game").toPath(), game.toPath());
-                Files.write(new File(game, ".distribution-ready").toPath(), new byte[]{1});
-            }
+            SaveArchive.recoverInterruptedImport(game.toPath());
+            DistributionSeeder.ensure(new File(runtime, "game").toPath(), game.toPath(), runtime.getName());
             for (String name : new String[]{"libproot.so", "libproot-loader.so", "libvirgl_test_server_android.so", "libpulseaudio.so"}) {
                 if (!new File(nativeDir, name).isFile()) throw new IOException("Build is missing native runtime component: " + name);
             }
@@ -77,9 +81,9 @@ public final class RuntimeService extends Service {
             waitForSocket(new File(tmp, ".X11-unix/X0"), x11);
             displayReady = true;
             status = "Starting GPU and audio…";
-            if (!BuildConfig.RUNTIME_GRAPHICS.equals("software")) {
+            if (!options.graphics.equals("software")) {
                 List<String> gpuArgs = new ArrayList<>(Arrays.asList(new File(nativeDir, "libvirgl_test_server_android.so").toString(), "--no-fork", "--socket-path", new File(tmp, ".virgl_test").toString()));
-                if (!BuildConfig.RUNTIME_GRAPHICS.equals("native")) gpuArgs.add("--" + BuildConfig.RUNTIME_GRAPHICS);
+                if (!options.graphics.equals("native")) gpuArgs.add("--" + options.graphics);
                 Process gpu = start(gpuArgs);
                 waitForSocket(new File(tmp, ".virgl_test"), gpu);
             }
@@ -90,7 +94,13 @@ public final class RuntimeService extends Service {
             waitForSocket(new File(tmp, "pulse-native"), pulse);
             // Attach the Android surface before GLFW chooses its initial size.
             // Opening it after the game starts clips the desktop menu.
-            for (int i=0; i<120 && !surfaceReady && !stopping; i++) Thread.sleep(250);
+            // Permission dialogs and Home can suspend the Activity. Count only
+            // foreground time toward a broken-surface timeout, not user time.
+            for (int i=0; i<120 && !surfaceReady && !stopping;) {
+                if (!x11.isAlive()) throw new IOException("Display server stopped");
+                if (displayFocused) i++;
+                Thread.sleep(250);
+            }
             if (!surfaceReady) throw new IOException("Display surface did not connect");
             status = "Starting PokeWilds…";
             Process gameProcess = start(guest(Arrays.asList("/usr/bin/java", "-Dorg.lwjgl.system.allocator=system", "-Dorg.lwjgl.glfw.window.fullscreen=true", "-jar", "/game/pokewilds.jar")));
@@ -102,7 +112,7 @@ public final class RuntimeService extends Service {
                 probe.destroy(); Thread.sleep(500);
             }
             if (!window) throw new IOException("Game did not open a window; see startup log");
-            start(guest(Arrays.asList("/bin/sh", "-c", "w=$(xdotool search --name '^PokeWilds$' | head -n1); xdotool windowsize --sync \"$w\" 480 432 windowmove --sync \"$w\" 0 0"))).waitFor();
+            start(guest(Arrays.asList("/bin/sh", "-c", "w=$(xdotool search --name '^PokeWilds$' | head -n1); xdotool windowsize --sync \"$w\" " + options.width + " " + options.height + " windowmove --sync \"$w\" 0 0"))).waitFor();
             running = true; status = "Running";
             int code = gameProcess.waitFor();
             status = forcedStop ? "Stopped without saving" : code == 0 ? "Game closed" : "Game exited with code " + code + ". See startup log.";
@@ -110,7 +120,7 @@ public final class RuntimeService extends Service {
             status = forcedStop ? "Stopped without saving" : stopping ? "Startup cancelled" : "Unable to start: " + e.getMessage();
             try (PrintWriter out = new PrintWriter(new FileOutputStream(log, true))) { e.printStackTrace(out); } catch (IOException ignored) { }
         } finally {
-            running = false; displayReady = false; surfaceReady = false; active = false;
+            running = false; displayReady = false; surfaceReady = false; displayFocused = false; active = false;
             cleanup(); DATA_LOCK.release(); stopForeground(true); stopSelf();
         }
     }
@@ -127,7 +137,7 @@ public final class RuntimeService extends Service {
         // app_process must use Android's framework libraries, not Termux's
         // namespace shims (notably libbinder_ndk/libandroid).
         env.put("LD_LIBRARY_PATH", args.get(0).equals("/system/bin/app_process") ? nativeDir.toString() :
-            nativeDir + ":" + host + "/lib:" + host + "/lib/pulseaudio:" + host + "/opt/virglrenderer-android/lib:" + host + "/opt/angle-android/" + (BuildConfig.RUNTIME_GRAPHICS.equals("angle-vulkan") ? "vulkan" : "gl"));
+            nativeDir + ":" + host + "/lib:" + host + "/lib/pulseaudio:" + host + "/opt/virglrenderer-android/lib:" + host + "/opt/angle-android/" + (options.graphics.equals("angle-vulkan") ? "vulkan" : "gl"));
         env.put("PREFIX", host);
         env.put("PULSE_CONFIG_PATH", host + "/etc/pulse");
         env.put("PULSE_RUNTIME_PATH", new File(getFilesDir(), "pulse").toString());
@@ -137,7 +147,7 @@ public final class RuntimeService extends Service {
         Process p = b.start(); processes.add(p); return p;
     }
     private List<String> guest(List<String> command) {
-        List<String> args = new ArrayList<>(Arrays.asList(new File(nativeDir, "libproot.so").toString(), "--kill-on-exit", "-0", "-r", new File(runtime, "rootfs").toString(), "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", tmp + ":/tmp", "-b", new File(getFilesDir(), "game") + ":/game", "-w", "/game", "/usr/bin/env", "-i", "HOME=/root", "PATH=/usr/local/bin:/usr/bin:/bin", "TMPDIR=/tmp", "DISPLAY=:0", "XDG_RUNTIME_DIR=/tmp", "PULSE_SERVER=unix:/tmp/pulse-native", "ALSOFT_DRIVERS=pulse", "ALSOFT_LOGLEVEL=" + (BuildConfig.DEBUG ? "3" : "1"), "GALLIUM_DRIVER=" + (BuildConfig.RUNTIME_GRAPHICS.equals("software") ? "llvmpipe" : "virpipe"), "__GLX_VENDOR_LIBRARY_NAME=mesa", "MESA_GL_VERSION_OVERRIDE=3.3", "LANG=C.UTF-8"));
+        List<String> args = new ArrayList<>(Arrays.asList(new File(nativeDir, "libproot.so").toString(), "--kill-on-exit", "-0", "-r", new File(runtime, "rootfs").toString(), "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", tmp + ":/tmp", "-b", new File(getFilesDir(), "game") + ":/game", "-w", "/game", "/usr/bin/env", "-i", "HOME=/root", "PATH=/usr/local/bin:/usr/bin:/bin", "TMPDIR=/tmp", "DISPLAY=:0", "XDG_RUNTIME_DIR=/tmp", "PULSE_SERVER=unix:/tmp/pulse-native", "ALSOFT_DRIVERS=pulse", "ALSOFT_LOGLEVEL=" + (BuildConfig.DEBUG ? "3" : "1"), "GALLIUM_DRIVER=" + (options.graphics.equals("software") ? "llvmpipe" : "virpipe"), "__GLX_VENDOR_LIBRARY_NAME=mesa", "MESA_GL_VERSION_OVERRIDE=3.3", "LANG=C.UTF-8"));
         args.addAll(command); return args;
     }
     private void waitForSocket(File socket, Process owner) throws Exception {
@@ -155,31 +165,6 @@ public final class RuntimeService extends Service {
             // WM_DELETE_WINDOW preserves the desktop game's own save/cancel handling.
             start(guest(Arrays.asList("/bin/sh", "-c", "w=$(xdotool search --name '^PokeWilds$' | head -n1); test -n \"$w\" && /usr/local/bin/pokewilds-close \"$w\""))).waitFor();
         } catch (Exception e) { status = "Quit request failed: " + e.getMessage(); }
-    }
-    private static void copyGame(Path source, Path target) throws IOException {
-        Path stage = target.resolveSibling("game.preparing"); SafeTar.deleteTree(stage);
-        Files.walkFileTree(source, new SimpleFileVisitor<Path>() {
-            public FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes a) throws IOException { Files.createDirectories(stage.resolve(source.relativize(dir))); return FileVisitResult.CONTINUE; }
-            public FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException { Files.copy(f, stage.resolve(source.relativize(f))); return FileVisitResult.CONTINUE; }
-        });
-        if (Files.exists(target)) {
-            // Preserve pre-launch imported worlds/settings; only add missing distribution files.
-            Files.walkFileTree(stage, new SimpleFileVisitor<Path>() {
-                public FileVisitResult preVisitDirectory(Path p, java.nio.file.attribute.BasicFileAttributes a) throws IOException { Files.createDirectories(target.resolve(stage.relativize(p))); return FileVisitResult.CONTINUE; }
-                public FileVisitResult visitFile(Path p, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
-                    Path relative=stage.relativize(p); Path dest=target.resolve(relative);
-                    String top=relative.getName(0).toString();
-                    boolean userData=top.equals("settings.txt") || top.equals("mods") || top.endsWith(".sav") || top.endsWith(".sav.zip");
-                    if (!userData || !Files.exists(dest)) {
-                        Path temp=dest.resolveSibling(dest.getFileName()+".preparing");
-                        Files.copy(p,temp,StandardCopyOption.REPLACE_EXISTING);
-                        Files.move(temp,dest,StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-            SafeTar.deleteTree(stage);
-        } else Files.move(stage, target);
     }
     private void cleanup() {
         synchronized (processes) {

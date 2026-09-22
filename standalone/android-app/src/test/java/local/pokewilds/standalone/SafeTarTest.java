@@ -56,6 +56,23 @@ public class SafeTarTest {
         try { SafeTar.extract(new ByteArrayInputStream(archive("rootfs/usr/bin/X11",".",TarConstants.LF_SYMLINK)),dir,10,10); assertEquals(Paths.get("."),Files.readSymbolicLink(dir.resolve("rootfs/usr/bin/X11"))); }
         finally { SafeTar.deleteTree(dir); }
     }
+    @Test public void removesProtectedPlaceholdersWithoutFollowingLinks() throws Exception {
+        Path root=Files.createTempDirectory("payload-cleanup-test");
+        Path runtime=root.resolve("runtime"), placeholder=runtime.resolve("game");
+        try {
+            Files.createDirectories(placeholder);
+            Path outside=root.resolve("preserve"); Files.createDirectories(outside);
+            Files.write(outside.resolve("save"),new byte[]{42});
+            Files.createSymbolicLink(runtime.resolve("outside"),outside);
+            Files.setPosixFilePermissions(placeholder,java.nio.file.attribute.PosixFilePermissions.fromString("---------"));
+            SafeTar.deleteTree(runtime);
+            assertFalse(Files.exists(runtime));
+            assertArrayEquals(new byte[]{42},Files.readAllBytes(outside.resolve("save")));
+        } finally {
+            if (Files.exists(placeholder)) Files.setPosixFilePermissions(placeholder,java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+            SafeTar.deleteTree(root);
+        }
+    }
     @Test public void rejectsEscapingSymlink() throws Exception {
         Path dir=Files.createTempDirectory("payload-test");
         try { try { SafeTar.extract(new ByteArrayInputStream(archive("rootfs/link","../../escape",TarConstants.LF_SYMLINK)),dir,10,10); fail("symlink escape"); } catch(IOException expected) { } }

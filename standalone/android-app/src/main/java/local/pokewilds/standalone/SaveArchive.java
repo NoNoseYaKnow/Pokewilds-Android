@@ -2,6 +2,8 @@ package local.pokewilds.standalone;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.zip.*;
@@ -13,6 +15,12 @@ public final class SaveArchive {
     private static final String MANIFEST = "pokewilds-save-manifest.json";
     private static final int MANIFEST_SCHEMA = 1;
     private static final String GAME_VERSION = "0.8.11";
+    private static final String PREPARING = "save-import.preparing";
+    static final String ACTIVATION_JOURNAL = ".activation-journal";
+    static final int JOURNAL_MAGIC = 0x504B534A;
+    static final int JOURNAL_VERSION = 1;
+    private static final int JOURNAL_LIMIT = 1024 * 1024;
+    private static final int JOURNAL_ENTRY_LIMIT = 100000;
 
     private SaveArchive() {}
 
@@ -22,6 +30,7 @@ public final class SaveArchive {
     }
 
     public static void exportTo(Path game, OutputStream destination) throws IOException {
+        recoverInterruptedImport(game);
         validateExportRoot(game);
         try (ZipOutputStream zip = new ZipOutputStream(destination, StandardCharsets.UTF_8)) {
             zip.putNextEntry(new ZipEntry(MANIFEST));
@@ -45,14 +54,16 @@ public final class SaveArchive {
     }
 
     public static void importFrom(InputStream source, Path game) throws IOException {
-        Path stage = game.resolveSibling("save-import.preparing");
+        recoverInterruptedImport(game);
+        Path stage = game.resolveSibling(PREPARING);
         SafeTar.deleteTree(stage);
         Files.createDirectories(stage);
-        Set<String> tops = new HashSet<>();
+        Set<String> tops = new LinkedHashSet<>();
         Set<Path> seen = new HashSet<>();
         long size = 0;
         int count = 0;
         boolean manifestSeen = false;
+        boolean preserveStage = false;
         try {
             try (ZipInputStream zip = new ZipInputStream(source, StandardCharsets.UTF_8)) {
                 ZipEntry e;
@@ -76,6 +87,12 @@ public final class SaveArchive {
                     }
                     if (relative.getNameCount() == 0) throw new IOException("Empty save archive path");
                     String top = relative.getName(0).toString();
+                    if (!out.startsWith(stage.resolve(top))) {
+                        throw new IOException("Unsupported save archive path: " + name);
+                    }
+                    if (top.endsWith(".sav.zip") && (e.isDirectory() || relative.getNameCount() != 1)) {
+                        throw new IOException("Invalid world backup entry: " + name);
+                    }
                     if (top.equals("settings.txt") && (e.isDirectory() || relative.getNameCount() != 1)) {
                         throw new IOException("Invalid settings entry");
                     }
@@ -103,36 +120,438 @@ public final class SaveArchive {
             if (tops.isEmpty()) throw new IOException("Archive contains no saves or settings");
             for (String top : tops) {
                 if (top.endsWith(".sav") && !top.endsWith(".sav.zip")) validateWorldFolder(stage.resolve(top), top);
+                if (top.endsWith(".sav.zip") && !Files.isRegularFile(stage.resolve(top), LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("World backup is not a file: " + top);
+                }
             }
-            Files.createDirectories(game);
+            ensureGameDirectory(game);
             // Preserve existing controls/settings; importing a world must not reset them.
-            if (Files.exists(game.resolve("settings.txt"))) {
+            if (Files.isSymbolicLink(game.resolve("settings.txt"))) {
+                throw new IOException("Unsafe existing settings symlink: settings.txt");
+            }
+            if (Files.exists(game.resolve("settings.txt"), LinkOption.NOFOLLOW_LINKS)) {
                 tops.remove("settings.txt");
                 Files.deleteIfExists(stage.resolve("settings.txt"));
             }
             if (tops.isEmpty()) throw new IOException("No new worlds or mods in archive; existing settings were preserved");
             for (String top : tops) {
-                if (Files.exists(game.resolve(top), LinkOption.NOFOLLOW_LINKS)) {
+                if (top.equals("mods")) {
+                    validateExistingMods(game.resolve("mods"));
+                } else if (existsNoFollow(game.resolve(top))) {
                     throw new IOException("Already exists: " + top + ". Import into a fresh game data directory or rename the world in the archive.");
                 }
             }
-            // Each top-level save is activated with a rename. Roll back if a later move fails.
-            List<String> moved = new ArrayList<>();
+            ModMergePlan modPlan = new ModMergePlan();
+            if (tops.contains("mods")) collectModPlan(stage.resolve("mods"), game.resolve("mods"), modPlan);
+            ActivationJournal journal = new ActivationJournal();
+            for (String top : tops) {
+                if (top.equals("mods")) {
+                    if (modPlan.createRoot) journal.directories.add(Paths.get("mods"));
+                    for (Path relative : modPlan.files) journal.files.add(Paths.get("mods").resolve(relative));
+                    for (Path relative : modPlan.directories) journal.directories.add(Paths.get("mods").resolve(relative));
+                } else if (top.endsWith(".sav") && !top.endsWith(".sav.zip")) {
+                    journal.trees.add(Paths.get(top));
+                } else {
+                    journal.files.add(Paths.get(top));
+                }
+            }
+            writeJournal(stage.resolve(ACTIVATION_JOURNAL), journal, false);
             try {
                 for (String top : tops) {
-                    Files.move(stage.resolve(top), game.resolve(top));
-                    moved.add(top);
+                    if (top.equals("mods")) {
+                        applyModPlan(stage.resolve(top), game.resolve(top), modPlan);
+                    } else {
+                        Files.move(stage.resolve(top), game.resolve(top));
+                    }
                 }
+                writeJournal(stage.resolve(ACTIVATION_JOURNAL), journal, true);
             } catch (IOException error) {
-                for (String top : moved) {
-                    try { Files.move(game.resolve(top), stage.resolve(top)); }
-                    catch (IOException rollback) { error.addSuppressed(rollback); }
-                }
+                if (!rollbackJournal(game, journal, error)) preserveStage = true;
                 throw error;
             }
         } finally {
-            SafeTar.deleteTree(stage);
+            if (!preserveStage) SafeTar.deleteTree(stage);
         }
+    }
+
+    private static void ensureGameDirectory(Path game) throws IOException {
+        if (Files.isSymbolicLink(game)) throw new IOException("Unsafe game directory symlink");
+        if (Files.exists(game, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isDirectory(game, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Game save path is not a directory");
+            }
+        } else {
+            Files.createDirectories(game);
+        }
+    }
+
+    private static boolean existsNoFollow(Path path) {
+        return Files.exists(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path);
+    }
+
+    private static final class ModMergePlan {
+        private final List<Path> files = new ArrayList<>();
+        private final List<Path> directories = new ArrayList<>();
+        private boolean createRoot;
+    }
+
+    private static final class ActivationJournal {
+        private boolean committed;
+        private final List<Path> files = new ArrayList<>();
+        private final List<Path> directories = new ArrayList<>();
+        private final List<Path> trees = new ArrayList<>();
+    }
+
+    private static void validateExistingMods(Path mods) throws IOException {
+        if (!existsNoFollow(mods)) return;
+        if (Files.isSymbolicLink(mods) || !Files.isDirectory(mods, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Unsafe existing mods path: mods");
+        }
+        Files.walkFileTree(mods, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult preVisitDirectory(Path path, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (Files.isSymbolicLink(path)) throw unsafeModsPath(mods, path);
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path path, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (Files.isSymbolicLink(path)) throw unsafeModsPath(mods, path);
+                if (!attrs.isRegularFile()) throw new IOException("Invalid existing mods entry: " + mods.relativize(path));
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFileFailed(Path path, IOException error) throws IOException {
+                throw new IOException("Cannot inspect existing mods path: " + mods.relativize(path), error);
+            }
+        });
+    }
+
+    private static IOException unsafeModsPath(Path mods, Path path) {
+        return new IOException("Unsafe existing mods symlink: mods/" + mods.relativize(path));
+    }
+
+    private static void collectModPlan(Path source, Path target, ModMergePlan plan) throws IOException {
+        if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Invalid mods archive entry");
+        }
+        if (!existsNoFollow(target)) {
+            plan.createRoot = true;
+        } else if (Files.isSymbolicLink(target) || !Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Mods path is not a directory: mods");
+        }
+        Files.walkFileTree(source, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult preVisitDirectory(Path path, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (path.equals(source)) return FileVisitResult.CONTINUE;
+                Path destination = target.resolve(source.relativize(path));
+                if (!existsNoFollow(destination)) {
+                    plan.directories.add(source.relativize(path));
+                } else {
+                    ensureModDirectory(destination, source.relativize(path).toString());
+                }
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path path, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (Files.isSymbolicLink(path) || !attrs.isRegularFile()) {
+                    throw new IOException("Invalid mods archive entry: mods/" + source.relativize(path));
+                }
+                Path relative = source.relativize(path);
+                Path destination = target.resolve(relative);
+                ensureModParentForPlan(destination.getParent(), relative, target, plan);
+                if (existsNoFollow(destination)) {
+                    if (Files.isSymbolicLink(destination)) {
+                        throw new IOException("Unsafe existing mods symlink: mods/" + relative);
+                    }
+                    if (!Files.isRegularFile(destination, LinkOption.NOFOLLOW_LINKS)) {
+                        throw new IOException("Mod conflict at mods/" + relative + ": existing entry is not a file");
+                    }
+                    if (!sameFileContent(path, destination)) {
+                        throw new IOException("Mod conflict at mods/" + relative + ": existing file differs from imported file");
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                plan.files.add(relative);
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFileFailed(Path path, IOException error) throws IOException {
+                throw new IOException("Cannot read mods archive entry: mods/" + source.relativize(path), error);
+            }
+        });
+    }
+
+    private static void applyModPlan(Path source, Path target, ModMergePlan plan) throws IOException {
+        if (plan.createRoot) {
+            if (existsNoFollow(target)) throw new IOException("Mods path appeared during import: mods");
+            Files.createDirectory(target);
+        } else if (Files.isSymbolicLink(target) || !Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Mods path is not a directory: mods");
+        }
+        for (Path relative : plan.directories) {
+            Path destination = target.resolve(relative);
+            if (existsNoFollow(destination)) {
+                throw new IOException("Mod path appeared during import: mods/" + relative);
+            }
+            Files.createDirectory(destination);
+        }
+        for (Path relative : plan.files) {
+            Path sourceFile = source.resolve(relative);
+            Path destination = target.resolve(relative);
+            ensureModParent(destination.getParent(), relative);
+            if (existsNoFollow(destination)) {
+                throw new IOException("Mod path appeared during import: mods/" + relative);
+            }
+            Files.move(sourceFile, destination);
+        }
+    }
+
+    private static void ensureModParentForPlan(Path parent, Path relative, Path target,
+                                               ModMergePlan plan) throws IOException {
+        if (parent == null) throw new IOException("Invalid mods archive path");
+        if (!existsNoFollow(parent)) {
+            Path parentRelative = target.relativize(parent);
+            if (plan.createRoot && parent.equals(target)) return;
+            if (plan.directories.contains(parentRelative)) return;
+        }
+        ensureModParent(parent, relative);
+    }
+
+    private static void ensureModDirectory(Path directory, String relative) throws IOException {
+        if (!existsNoFollow(directory)) {
+            return;
+        }
+        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Mod conflict at mods/" + relative + ": existing entry is not a directory");
+        }
+    }
+
+    private static void ensureModParent(Path parent, Path relative) throws IOException {
+        if (parent == null) throw new IOException("Invalid mods archive path");
+        // walkFileTree visits every archive directory before its files, so this
+        // only needs to verify that an existing parent was not replaced by a link.
+        if (Files.isSymbolicLink(parent)) {
+            throw new IOException("Unsafe existing mods symlink: mods/" + relative);
+        }
+        if (!Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Mod conflict at mods/" + relative + ": parent is not a directory");
+        }
+    }
+
+    private static boolean sameFileContent(Path first, Path second) throws IOException {
+        if (Files.size(first) != Files.size(second)) return false;
+        try (InputStream a = Files.newInputStream(first); InputStream b = Files.newInputStream(second)) {
+            byte[] left = new byte[65536];
+            byte[] right = new byte[65536];
+            int n;
+            while ((n = a.read(left)) != -1) {
+                int offset = 0;
+                while (offset < n) {
+                    int m = b.read(right, offset, n - offset);
+                    if (m == -1) return false;
+                    for (int i = 0; i < m; i++) {
+                        if (left[offset + i] != right[offset + i]) return false;
+                    }
+                    offset += m;
+                }
+            }
+            return b.read() == -1;
+        }
+    }
+
+    /** Removes an interrupted activation, or just its staging tree after commit. */
+    public static void recoverInterruptedImport(Path game) throws IOException {
+        Path stage = game.resolveSibling(PREPARING);
+        if (!Files.exists(stage, LinkOption.NOFOLLOW_LINKS)) return;
+        if (Files.isSymbolicLink(stage) || !Files.isDirectory(stage, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Unsafe interrupted import staging path");
+        }
+        Path journalPath = stage.resolve(ACTIVATION_JOURNAL);
+        if (Files.isSymbolicLink(journalPath)) {
+            throw new IOException("Interrupted save import journal is missing or unsafe");
+        }
+        if (!Files.exists(journalPath, LinkOption.NOFOLLOW_LINKS)) {
+            // The importer writes this journal before its first activation move.
+            // No journal therefore means extraction stopped before activation.
+            SafeTar.deleteTree(stage);
+            return;
+        }
+        if (!Files.isRegularFile(journalPath, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Interrupted save import journal is missing or unsafe");
+        }
+        ActivationJournal journal = readJournal(journalPath);
+        validateJournal(game, journal);
+        if (journal.committed) {
+            SafeTar.deleteTree(stage);
+            return;
+        }
+        IOException rollbackError = new IOException("Interrupted save import was rolled back");
+        if (!rollbackJournal(game, journal, rollbackError)) {
+            throw new IOException("Interrupted save import rollback failed; journal retained", rollbackError);
+        }
+        SafeTar.deleteTree(stage);
+    }
+
+    private static void writeJournal(Path path, ActivationJournal journal, boolean committed) throws IOException {
+        int entries = journal.files.size() + journal.directories.size() + journal.trees.size();
+        if (entries > JOURNAL_ENTRY_LIMIT) throw new IOException("Too many save import activation entries");
+        Path temporary = path.resolveSibling(path.getFileName().toString() + ".tmp");
+        Files.deleteIfExists(temporary);
+        try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+             DataOutputStream output = new DataOutputStream(Channels.newOutputStream(channel))) {
+            output.writeInt(JOURNAL_MAGIC);
+            output.writeInt(JOURNAL_VERSION);
+            output.writeByte(committed ? 1 : 0);
+            writeJournalPaths(output, journal.files);
+            writeJournalPaths(output, journal.directories);
+            writeJournalPaths(output, journal.trees);
+            output.flush();
+            channel.force(true);
+        }
+        if (Files.size(temporary) > JOURNAL_LIMIT) throw new IOException("Save import journal is too large");
+        try {
+            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static void writeJournalPaths(DataOutputStream output, List<Path> paths) throws IOException {
+        output.writeInt(paths.size());
+        for (Path path : paths) {
+            String name = path.toString().replace(File.separatorChar, '/');
+            if (name.length() == 0 || name.length() > 65535) throw new IOException("Invalid save import journal path");
+            output.writeUTF(name);
+        }
+    }
+
+    private static ActivationJournal readJournal(Path path) throws IOException {
+        if (Files.size(path) > JOURNAL_LIMIT) throw new IOException("Save import journal is too large");
+        ActivationJournal journal = new ActivationJournal();
+        try (DataInputStream input = new DataInputStream(Files.newInputStream(path))) {
+            if (input.readInt() != JOURNAL_MAGIC || input.readInt() != JOURNAL_VERSION) {
+                throw new IOException("Unsupported save import journal");
+            }
+            int state = input.readUnsignedByte();
+            if (state != 0 && state != 1) throw new IOException("Malformed save import journal");
+            journal.committed = state == 1;
+            readJournalPaths(input, journal.files);
+            readJournalPaths(input, journal.directories);
+            readJournalPaths(input, journal.trees);
+            if (input.read() != -1) throw new IOException("Malformed save import journal");
+        } catch (EOFException | UTFDataFormatException error) {
+            throw new IOException("Malformed save import journal", error);
+        }
+        return journal;
+    }
+
+    private static void readJournalPaths(DataInputStream input, List<Path> paths) throws IOException {
+        int count = input.readInt();
+        if (count < 0 || count > JOURNAL_ENTRY_LIMIT || count > JOURNAL_LIMIT / 8) {
+            throw new IOException("Invalid save import journal entry count");
+        }
+        for (int i = 0; i < count; i++) {
+            try { paths.add(Paths.get(input.readUTF())); }
+            catch (InvalidPathException error) { throw new IOException("Malformed save import journal", error); }
+        }
+    }
+
+    private static void validateJournal(Path game, ActivationJournal journal) throws IOException {
+        ensureGameDirectory(game);
+        Set<String> seen = new HashSet<>();
+        for (Path path : journal.files) validateJournalPath(game, path, 0, seen);
+        for (Path path : journal.directories) validateJournalPath(game, path, 1, seen);
+        for (Path path : journal.trees) validateJournalPath(game, path, 2, seen);
+    }
+
+    private static Path validateJournalPath(Path game, Path relative, int kind, Set<String> seen) throws IOException {
+        String text = relative.toString();
+        if (relative.isAbsolute() || relative.getNameCount() == 0 || text.contains("\\")
+            || !relative.normalize().equals(relative) || !seen.add(text)) {
+            throw new IOException("Unsafe save import journal path: " + text);
+        }
+        String top = relative.getName(0).toString();
+        boolean valid;
+        if (kind == 0) {
+            valid = (top.equals("settings.txt") && relative.getNameCount() == 1)
+                || (top.equals("mods") && relative.getNameCount() > 1)
+                || (top.endsWith(".sav.zip") && relative.getNameCount() == 1);
+        } else if (kind == 1) {
+            valid = top.equals("mods");
+        } else {
+            valid = top.endsWith(".sav") && !top.endsWith(".sav.zip") && relative.getNameCount() == 1;
+        }
+        if (!valid) throw new IOException("Unsafe save import journal path: " + text);
+        Path root = game.toAbsolutePath().normalize();
+        Path target = root.resolve(relative).normalize();
+        if (!target.startsWith(root)) throw new IOException("Unsafe save import journal path: " + text);
+        ensureNoSymlinkAncestors(root, target);
+        if (Files.isSymbolicLink(target)) throw new IOException("Unsafe save import journal symlink: " + text);
+        return target;
+    }
+
+    private static void ensureNoSymlinkAncestors(Path root, Path target) throws IOException {
+        if (Files.isSymbolicLink(root)) throw new IOException("Unsafe game directory symlink");
+        Path current = root;
+        for (Path part : root.relativize(target)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) throw new IOException("Unsafe save import journal symlink: " + root.relativize(current));
+        }
+    }
+
+    private static boolean rollbackJournal(Path game, ActivationJournal journal, IOException error) {
+        boolean success = true;
+        for (int i = journal.files.size() - 1; i >= 0; i--) {
+            try { deleteJournalFile(game.resolve(journal.files.get(i)).normalize()); }
+            catch (IOException rollback) { error.addSuppressed(rollback); success = false; }
+        }
+        for (int i = journal.trees.size() - 1; i >= 0; i--) {
+            try { deleteJournalTree(game.resolve(journal.trees.get(i)).normalize()); }
+            catch (IOException rollback) { error.addSuppressed(rollback); success = false; }
+        }
+        for (int i = journal.directories.size() - 1; i >= 0; i--) {
+            try { deleteJournalDirectory(game.resolve(journal.directories.get(i)).normalize()); }
+            catch (IOException rollback) { error.addSuppressed(rollback); success = false; }
+        }
+        return success;
+    }
+
+    private static void deleteJournalFile(Path path) throws IOException {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
+        if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Unsafe interrupted import file: " + path);
+        }
+        Files.delete(path);
+    }
+
+    private static void deleteJournalDirectory(Path path) throws IOException {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
+        if (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Unsafe interrupted import directory: " + path);
+        }
+        Files.delete(path);
+    }
+
+    private static void deleteJournalTree(Path path) throws IOException {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
+        if (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Unsafe interrupted import world: " + path);
+        }
+        rejectSymlinks(path);
+        SafeTar.deleteTree(path);
+    }
+
+    private static void rejectSymlinks(Path root) throws IOException {
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult preVisitDirectory(Path path, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (Files.isSymbolicLink(path)) throw new IOException("Unsafe interrupted import symlink: " + path);
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path path, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (Files.isSymbolicLink(path)) throw new IOException("Unsafe interrupted import symlink: " + path);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private static void validateExportRoot(Path game) throws IOException {

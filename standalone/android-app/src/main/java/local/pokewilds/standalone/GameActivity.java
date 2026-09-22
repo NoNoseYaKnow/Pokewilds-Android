@@ -16,8 +16,13 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         }
     };
     @Override public void onResume() { super.onResume(); sessionHandler.post(checkSession); }
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        RuntimeService.displayFocused = focused;
+    }
     @Override public void onPause() {
         sessionHandler.removeCallbacks(checkSession);
+        RuntimeService.displayFocused = false;
         RuntimeService.surfaceReady = false;
         for (int i=0;i<directions.length;i++) if(directions[i]) { directions[i]=false; super.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,DIRECTION_KEYS[i])); }
         super.onPause();
@@ -67,8 +72,10 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         }
         return super.onGenericMotionEvent(event);
     }
+    // The upstream super implementation toggles its keyboard; this host owns Quit.
+    @android.annotation.SuppressLint("MissingSuperCall")
     @Override public void onBackPressed() {
-        getLorieView().setKeyboardVisible(false);
+        if (getLorieView() != null) getLorieView().setKeyboardVisible(false);
         new android.app.AlertDialog.Builder(this).setTitle("Quit PokeWilds?")
             .setMessage("The game will ask whether to save if needed.")
             .setPositiveButton("Quit", (d, w) -> startService(new Intent(this, RuntimeService.class).setAction(RuntimeService.QUIT)))

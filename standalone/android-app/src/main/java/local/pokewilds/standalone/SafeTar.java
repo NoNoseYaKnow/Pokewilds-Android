@@ -78,6 +78,18 @@ public final class SafeTar {
     public static void deleteTree(Path path) throws IOException {
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
         Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult visitFileFailed(Path p, IOException error) throws IOException {
+                // PRoot can leave mode-000 bind placeholders in its private
+                // rootfs. Restore owner access before removing this old tree.
+                if (Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)
+                    && p.toFile().setReadable(true, true)
+                    && p.toFile().setWritable(true, true)
+                    && p.toFile().setExecutable(true, true)) {
+                    deleteTree(p);
+                    return FileVisitResult.CONTINUE;
+                }
+                throw error;
+            }
             @Override public FileVisitResult visitFile(Path p, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException { Files.delete(p); return FileVisitResult.CONTINUE; }
             @Override public FileVisitResult postVisitDirectory(Path p, IOException error) throws IOException { if (error != null) throw error; Files.delete(p); return FileVisitResult.CONTINUE; }
         });

@@ -1,6 +1,6 @@
 # Standalone PokeWilds 0.8.11 runtime APK
 
-Status: implementation plan only. The current Termux installation remains the working baseline.
+Status: implemented standalone prototype on `standalone-apk-plan`; Android 13 ARM64 emulator implementation checks are complete. The Pocket DMG remains the final hardware acceptance gate. See [implementation and validation](../standalone/VALIDATION.md).
 
 ## Chosen approach
 
@@ -208,11 +208,17 @@ Test a signed release APK, not only a debug build:
 
 After M1, estimate from measured rebuild/embedding work. A **multi-week project** is a realistic planning assumption; this is substantially more work than the small Termux-command launcher. Avoid a fixed completion date until the executable/prefix/display questions are settled.
 
-## Immediate next implementation task
+## Current implementation status
 
-Create `standalone/` and prove the **new-package-ID execution chain plus embedded display**, first with `java -version`, then with the unchanged game menu and its save dialog. Record the exact target SDK, executable locations, rebuilt components, and remaining external dependencies.
+The original first milestone—new application ID, private Java execution,
+embedded accelerated display and the unchanged game—is implemented and tested
+on the Android 13 ARM64 emulator. The branch now contains the self-contained
+runtime supervisor, offline payload installer, save migration, settings,
+controller mapping and locally signed APK recipe.
 
-Do this before polishing menus, rewriting gameplay, shrinking the payload, or removing the working Termux installation.
+See [validation evidence and remaining device gates](../standalone/VALIDATION.md).
+The next acceptance step is the Pocket DMG comparison and real-world migration;
+the working Termux installation should remain available until those checks pass.
 
 ## Research and references
 

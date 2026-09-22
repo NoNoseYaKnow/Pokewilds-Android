@@ -5,7 +5,10 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.widget.Button;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 public final class LauncherActivity extends Activity {
@@ -15,6 +18,8 @@ public final class LauncherActivity extends Activity {
     private boolean openedGame;
     private boolean managementMode;
     private boolean manuallyStarted;
+    private Spinner graphicsControl;
+    private Spinner viewportControl;
     private final java.util.concurrent.ExecutorService files = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -29,6 +34,7 @@ public final class LauncherActivity extends Activity {
                 manuallyStarted = false;
                 startActivity(new Intent(LauncherActivity.this, GameActivity.class));
             }
+            updateRuntimeControls();
             handler.postDelayed(this, 500);
         }
     };
@@ -46,6 +52,7 @@ public final class LauncherActivity extends Activity {
         forceStop.setOnClickListener(v -> confirmForceStop()); layout.addView(forceStop);
         Button quit = new Button(this); quit.setText("Quit game");
         quit.setOnClickListener(v -> openGameForQuit()); layout.addView(quit);
+        if (managementMode) addRuntimeControls(layout);
         Button logs = new Button(this); logs.setText("View startup log");
         logs.setOnClickListener(v -> {
             String text;
@@ -93,6 +100,57 @@ public final class LauncherActivity extends Activity {
     }
     @Override protected void onDestroy() { files.shutdown(); super.onDestroy(); }
     private void startGame() { startForegroundService(new Intent(this, RuntimeService.class)); }
+
+    private void addRuntimeControls(LinearLayout layout) {
+        RuntimeOptions options = RuntimeOptions.read(this);
+        TextView heading = new TextView(this); heading.setText("Runtime settings"); heading.setTextSize(20); layout.addView(heading);
+        TextView graphicsLabel = new TextView(this); graphicsLabel.setText("Graphics profile"); layout.addView(graphicsLabel);
+        graphicsControl = new Spinner(this);
+        graphicsControl.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, RuntimeOptions.GRAPHICS_LABELS));
+        graphicsControl.setSelection(RuntimeOptions.graphicsIndex(options.graphics));
+        graphicsControl.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+            @Override public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) {
+                if (RuntimeService.active) {
+                    graphicsControl.setSelection(RuntimeOptions.graphicsIndex(RuntimeOptions.read(LauncherActivity.this).graphics));
+                    RuntimeService.status = "Quit the game before changing runtime settings.";
+                    return;
+                }
+                RuntimeOptions current = RuntimeOptions.read(LauncherActivity.this);
+                RuntimeOptions.save(LauncherActivity.this, RuntimeOptions.GRAPHICS_VALUES[position], current.width, current.height);
+            }
+        });
+        layout.addView(graphicsControl);
+        TextView viewportLabel = new TextView(this); viewportLabel.setText("Viewport"); layout.addView(viewportLabel);
+        viewportControl = new Spinner(this);
+        String[] viewports = new String[RuntimeOptions.VIEWPORT_WIDTHS.length];
+        for (int i = 0; i < viewports.length; i++) viewports[i] = RuntimeOptions.viewportLabel(i);
+        viewportControl.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, viewports));
+        viewportControl.setSelection(RuntimeOptions.viewportIndex(options.width, options.height));
+        viewportControl.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+            @Override public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) {
+                if (RuntimeService.active) {
+                    RuntimeOptions current = RuntimeOptions.read(LauncherActivity.this);
+                    viewportControl.setSelection(RuntimeOptions.viewportIndex(current.width, current.height));
+                    RuntimeService.status = "Quit the game before changing runtime settings.";
+                    return;
+                }
+                RuntimeOptions current = RuntimeOptions.read(LauncherActivity.this);
+                RuntimeOptions.save(LauncherActivity.this, current.graphics,
+                    RuntimeOptions.VIEWPORT_WIDTHS[position], RuntimeOptions.VIEWPORT_HEIGHTS[position]);
+            }
+        });
+        layout.addView(viewportControl);
+        updateRuntimeControls();
+    }
+
+    private void updateRuntimeControls() {
+        if (graphicsControl == null) return;
+        boolean enabled = !RuntimeService.active;
+        graphicsControl.setEnabled(enabled);
+        viewportControl.setEnabled(enabled);
+    }
     private void openGameForQuit() {
         if (!RuntimeService.active) { RuntimeService.status = "No game is running."; return; }
         if (!RuntimeService.displayReady) { RuntimeService.status = "Game display is not ready yet."; return; }
@@ -112,7 +170,12 @@ public final class LauncherActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent); setIntent(intent);
-        managementMode = isManagementIntent(intent);
+        boolean nextManagementMode = isManagementIntent(intent);
+        if (managementMode != nextManagementMode) {
+            recreate();
+            return;
+        }
+        managementMode = nextManagementMode;
         manuallyStarted = false;
         openedGame = false;
         if (!managementMode) startGame();

@@ -136,10 +136,10 @@
       "status": "feasibility-only"
     },
     "modern": {
-      "target_sdk": 29,
+      "target_sdk": 33,
       "host_native_location": "apk-native-lib-arm64-v8a",
-      "guest_executable_location": "unproven",
-      "status": "blocked-until-device-probe"
+      "guest_executable_location": "filesDir/runtime/<payload-sha256>/rootfs via native PRoot",
+      "status": "Android-13-API-33-emulator-proven; AYANEO-device-pending"
     }
   },
   "inputs": [

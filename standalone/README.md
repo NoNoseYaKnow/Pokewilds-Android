@@ -3,19 +3,16 @@
 This directory is developed on the `standalone-apk-plan` branch so the
 existing Termux installer and shortcut APK on `main` remain independent. The
 branch packages the unchanged PokeWilds 0.8.11 release with a private Linux
-guest payload and Android host artifacts. It is a build prototype, not a
-completed standalone runtime.
+guest payload and Android host artifacts. It is a working standalone prototype, pending validation on the Pocket DMG.
 
-The current build can assemble a debug APK and run the JVM unit tests. A
-separate modernprobe APK has reached the unchanged game JAR with llvmpipe on
-an Android 13 emulator, without Termux apps, but that probe is not a release
-or device-complete result for this project. The Android execution path,
-writable-code restrictions, PRoot/JRE placement, embedded X11/Lorie surface,
-VirGL and audio services, controller input, and save/exit lifecycle remain
-runtime validation gates. See
-[`docs/standalone-android-plan.md`](../docs/standalone-android-plan.md) and
-[`runtime/PAYLOAD_CONTRACT.md`](runtime/PAYLOAD_CONTRACT.md) for the design
-constraints.
+The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
+surface, accelerated VirGL through ANGLE Vulkan, and bundled PulseAudio.
+World generation, save/reload, the Swing save prompt, Android document-picker
+export, and process cleanup have been exercised without Termux apps installed.
+The Pocket DMG's native GPU path, hardware controls, ES-DE integration, and
+existing personal world still require device validation. See
+[`VALIDATION.md`](VALIDATION.md) for the exact build and test evidence and
+[`runtime/PAYLOAD_CONTRACT.md`](runtime/PAYLOAD_CONTRACT.md) for payload constraints.
 
 ## Prerequisites
 
@@ -120,23 +117,73 @@ used by the Android supervisor:
 `native` remains the default accelerated profile for this target. The
 `software` profile selects guest llvmpipe and is useful for isolating VirGL
 problems; `angle-gl` and `angle-vulkan` select the corresponding diagnostic
-VirGL paths. The ANGLE profiles remain experiments while their relocation is
-being probed, and no profile in this prototype is a claim of release-ready
-standalone rendering.
+VirGL paths. The Android emulator uses Vulkan compatibility because its native EGL driver
+lacks the surfaceless-context extension required by this VirGL build. This is
+an emulator compatibility choice; the DMG's default native profile needs a
+physical-device check.
 
-The separate modernprobe APK reached the unchanged JAR with llvmpipe on an
-Android 13 emulator. The original private APK has also shown generated-world
-creation and movement, but its AWT quit path currently fails on missing
-`libbrotlidec`, and guest PulseAudio still has a memfd negotiation failure.
-Those fixes are in progress; these observations do not establish complete
-save/quit or audio behavior for this standalone APK.
+From the launcher's **Manage saves** shortcut, stop the game before changing
+runtime settings. The graphics choices are Native GPU (recommended), Vulkan
+compatibility, OpenGL compatibility, and Software (slow diagnostics). The
+viewport choices are 480x432 (default), 640x576, and 960x864. The selections
+are stored in the app's private runtime preferences and applied to the next
+session; the controls are disabled while a session is active. The normal
+launcher path keeps its one-tap auto-start behavior and uses the build's
+`native` default until a management selection is saved.
+
+## Signed local build
+
+The `release` variant reads the ignored files `.signing/standalone.p12` and
+`.signing/password`, using key alias `standalone`. Keep both files private and
+back them up securely: subsequent APKs must use the same key to update this
+installation without uninstalling and losing app-private saves. They are not
+committed or included in the APK. A release without these files is unsigned.
+
+With the local signing files present:
+
+```sh
+./build.sh :android-app:assembleRelease
+python3 packaging/verify_apk.py android-app/build/outputs/apk/release/android-app-release.apk
+```
+
+The checked-in source and recipes can be published independently of the game
+APK. See [upstream provenance and notices](UPSTREAM.md) before redistributing
+bundled third-party artifacts.
+
+## Playing and backups
+
+Install the APK and choose **Start / resume** on first launch. Preparation is
+local and shows progress. Subsequent ordinary launches start the game directly.
+Long-press the Android launcher icon and choose **Manage saves** to open settings,
+import/export, recovery, and startup logs. The running notification also opens
+this screen. ES-DE can import the app as a normal Android game; its actual
+Pocket DMG flow remains a device check.
+
+D-pad/stick directions are mapped to arrows, A to Z, B to X, Start to Enter,
+and shoulders to C/V. Start activates the menu's Go option and the focused
+Swing save-dialog button. Android Back opens **Quit / Keep playing /
+Force-stop recovery**. Quit asks the game to close normally; accept its save
+prompt before leaving. Force-stop is for a hung session and discards unsaved
+progress. Home leaves the session running; do not assume the game autosaves.
+
+Use **Export saves** after saving and quitting, then choose a location in the
+Android document picker. Uninstalling removes private worlds: export first.
+[Migration instructions](migration/README.md) explain copying current 0.8.11
+JSON saves from Termux. Legacy Kryo saves are not supported by this importer.
+Imports preserve existing settings, refuse world-name collisions, merge
+identical/missing mod files, and refuse conflicting mod contents.
 
 ## Prototype boundary
 
-The archive is a Linux ARM64/glibc guest payload. Android host libraries are
-built separately and placed under `host/`; they are not evidence that Android
-can execute the extracted Linux programs from writable app storage. The
-Android Gradle target SDK is 33, selected after the modernprobe Android 13
-check, and the output is a debug artifact. Treat an APK build as a packaging
-and static/unit-test result until the remaining runtime gates above are
-demonstrated for this APK on the target device.
+The first supported validation target is Android 13 ARM64, with target SDK 33.
+The Linux ARM64/glibc guest executes through the packaged Android PRoot and
+loader; those host executables live in Android's extracted native-library
+directory. Guest Java and libraries remain app-private. No external command
+permission, Termux package, root, or on-device package installation is needed.
+
+`INTERNET` remains available to the unchanged desktop game's networking code;
+o runtime download is performed. X11 disables TCP listening, and VirGL and
+audio use app-private Unix sockets. Multiplayer/network behavior is untested.
+The app requests the foreground-service capability to supervise an active game.
+Android versions beyond the tested API, including 16 KB page-size devices, need
+separate execution and native-library checks.

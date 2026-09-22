@@ -1,3 +1,5 @@
 
 # Unified-diff context lines intentionally retain upstream whitespace.
 standalone/**/*.patch -whitespace
+# Preserve third-party notice files byte-for-byte, including upstream whitespace.
+standalone/android-app/src/main/assets/notices/native/** -whitespace
