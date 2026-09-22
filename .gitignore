@@ -1,0 +1,8 @@
+launcher/classes/
+launcher/dex/
+launcher/resources.zip
+launcher/unsigned.apk
+launcher/aligned.apk
+launcher/*.p12
+launcher/*.jks
+bin/*.idsig
