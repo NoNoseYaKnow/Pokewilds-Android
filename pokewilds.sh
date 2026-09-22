@@ -14,13 +14,34 @@ if ! flock -n 9; then
 fi
 exec > "$HOME/pokewilds-launch.log" 2>&1
 pulseaudio --start --load='module-native-protocol-tcp listen=127.0.0.1 auth-ip-acl=127.0.0.1 auth-anonymous=1' --exit-idle-time=-1 9>&-
-if ! DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1; then
- termux-x11 :0 -ac 9>&- &
- sleep 2
+# An X11 abstract socket can still answer xdotool after its filesystem
+# socket disappears; the guest GLFW client needs the filesystem socket too.
+if [ ! -S "$TMPDIR/.X11-unix/X0" ] || ! DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1; then
+ pkill -f '^termux-x11 com.termux.x11 :0 -ac$' || true
+ for _attempt in $(seq 1 30); do
+  pgrep -f '^termux-x11 com.termux.x11 :0 -ac$' >/dev/null || break
+  sleep 0.1
+ done
+ termux-x11 :0 -ac > "$HOME/pokewilds-x11.log" 2>&1 9>&- &
+ for _attempt in $(seq 1 50); do
+  if [ -S "$TMPDIR/.X11-unix/X0" ] && DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1; then break; fi
+  sleep 0.1
+ done
+ [ -S "$TMPDIR/.X11-unix/X0" ] && DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1 || { echo 'X11 display failed to start.'; exit 1; }
 fi
-if ! pgrep -f '^virgl_test_server_android($| )' >/dev/null; then
+# A surviving VirGL process without its listening socket cannot serve Java.
+if [ ! -S "$TMPDIR/.virgl_test" ] || ! pgrep -f '^virgl_test_server_android($| )' >/dev/null; then
+ pkill -f '^virgl_test_server_android($| )' || true
+ for _attempt in $(seq 1 30); do
+  pgrep -f '^virgl_test_server_android($| )' >/dev/null || break
+  sleep 0.1
+ done
  nohup virgl_test_server_android > "$HOME/pokewilds-gpu.log" 2>&1 < /dev/null 9>&- &
- sleep 2
+ for _attempt in $(seq 1 50); do
+  [ -S "$TMPDIR/.virgl_test" ] && break
+  sleep 0.1
+ done
+ [ -S "$TMPDIR/.virgl_test" ] || { echo 'GPU server failed to start.'; exit 1; }
 fi
 am start -n com.termux.x11/.MainActivity || true
 export DISPLAY=:0

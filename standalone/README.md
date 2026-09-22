@@ -1,16 +1,16 @@
 # Standalone APK prototype
 
-This directory is developed on the `standalone-apk-plan` branch so the
-existing Termux installer and shortcut APK on `main` remain independent. The
-branch packages the unchanged PokeWilds 0.8.11 release with a private Linux
-guest payload and Android host artifacts. It is a working standalone prototype, pending validation on the Pocket DMG.
+This app packages the unchanged PokeWilds 0.8.11 release with a private Linux
+guest payload and Android host artifacts. It is a working standalone prototype
+tested on the Pocket DMG running Android 13.
 
 The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
 surface, accelerated VirGL through ANGLE Vulkan, and bundled PulseAudio.
 World generation, save/reload, the Swing save prompt, Android document-picker
 export, and process cleanup have been exercised without Termux apps installed.
-The Pocket DMG's native GPU path, hardware controls, ES-DE integration, and
-existing personal world still require device validation. See
+The Pocket DMG's native GPU path, hardware controls, quit dialog, and soft
+keyboard have been exercised. ES-DE integration and migration of an existing
+personal world still require device validation. See
 [`VALIDATION.md`](VALIDATION.md) for the exact build and test evidence and
 [`runtime/PAYLOAD_CONTRACT.md`](runtime/PAYLOAD_CONTRACT.md) for payload constraints.
 
@@ -119,8 +119,7 @@ used by the Android supervisor:
 problems; `angle-gl` and `angle-vulkan` select the corresponding diagnostic
 VirGL paths. The Android emulator uses Vulkan compatibility because its native EGL driver
 lacks the surfaceless-context extension required by this VirGL build. This is
-an emulator compatibility choice; the DMG's default native profile needs a
-physical-device check.
+an emulator compatibility choice; the DMG uses the default native profile.
 
 From the launcher's **App settings** shortcut, stop the game before changing
 runtime or game settings. The graphics choices are Native GPU (recommended), Vulkan
