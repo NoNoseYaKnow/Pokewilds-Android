@@ -18,6 +18,7 @@ public final class RuntimeService extends Service {
     static volatile boolean displayFocused;
     static volatile boolean displayReady;
     static volatile boolean surfaceReady;
+    static volatile int[] requestedViewport;
     static final Semaphore DATA_LOCK = new Semaphore(1);
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final List<Process> processes = Collections.synchronizedList(new ArrayList<>());
@@ -53,7 +54,7 @@ public final class RuntimeService extends Service {
             else stopSelf();
         } else if (session == null || session.isDone()) {
             if (!DATA_LOCK.tryAcquire()) { status = "Save transfer in progress; try again when it finishes."; stopForeground(true); stopSelf(); return START_NOT_STICKY; }
-            stopping = false; forcedStop = false; active = true;
+            stopping = false; forcedStop = false; active = true; requestedViewport = null;
             session = worker.submit(this::runSession);
         }
         return START_NOT_STICKY;
@@ -112,9 +113,25 @@ public final class RuntimeService extends Service {
                 probe.destroy(); Thread.sleep(500);
             }
             if (!window) throw new IOException("Game did not open a window; see startup log");
-            start(guest(Arrays.asList("/bin/sh", "-c", "w=$(xdotool search --name '^PokeWilds$' | head -n1); xdotool windowsize --sync \"$w\" " + options.width + " " + options.height + " windowmove --sync \"$w\" 0 0"))).waitFor();
+            int[] viewport = requestedViewport;
+            if (viewport == null) viewport = new int[]{options.width, options.height};
+            resizeGame(viewport);
             running = true; status = "Running";
-            int code = gameProcess.waitFor();
+            while (!gameProcess.waitFor(500, TimeUnit.MILLISECONDS)) {
+                int[] next = requestedViewport;
+                if (next != null && (next[0] != viewport[0] || next[1] != viewport[1]) && !stopping) {
+                    try {
+                        resizeGame(next);
+                    } catch (IOException e) {
+                        // A display change must not discard a running world's progress.
+                        try (PrintWriter out = new PrintWriter(new FileOutputStream(log, true))) {
+                            out.println("Viewport resize failed: " + e.getMessage());
+                        }
+                    }
+                    viewport = next;
+                }
+            }
+            int code = gameProcess.exitValue();
             status = forcedStop ? "Stopped without saving" : code == 0 ? "Game closed" : "Game exited with code " + code + ". See startup log.";
         } catch (Exception e) {
             status = forcedStop ? "Stopped without saving" : stopping ? "Startup cancelled" : "Unable to start: " + e.getMessage();
@@ -123,6 +140,20 @@ public final class RuntimeService extends Service {
             running = false; displayReady = false; surfaceReady = false; displayFocused = false; active = false;
             cleanup(); DATA_LOCK.release(); stopForeground(true); stopSelf();
         }
+    }
+    private void resizeGame(int[] size) throws IOException, InterruptedException {
+        try (PrintWriter out = new PrintWriter(new FileOutputStream(log, true))) {
+            out.println("Game viewport: " + size[0] + "x" + size[1]);
+        }
+        Process resize = start(guest(Arrays.asList("/bin/sh", "-c",
+            "w=$(xdotool search --name '^PokeWilds$' | head -n1); "
+            + "xdotool windowsize \"$w\" " + size[0] + " " + size[1]
+            + " windowmove \"$w\" 0 0")));
+        if (!resize.waitFor(5, TimeUnit.SECONDS)) {
+            resize.destroy();
+            throw new IOException("Game window resize timed out");
+        }
+        if (resize.exitValue() != 0) throw new IOException("Unable to resize game window");
     }
     private Process start(List<String> args) throws IOException {
         if (stopping) throw new IOException("Session stopped");

@@ -117,7 +117,7 @@ public final class LauncherActivity extends Activity {
                     return;
                 }
                 RuntimeOptions current = RuntimeOptions.read(LauncherActivity.this);
-                RuntimeOptions.save(LauncherActivity.this, RuntimeOptions.GRAPHICS_VALUES[position], current.width, current.height);
+                RuntimeOptions.save(LauncherActivity.this, RuntimeOptions.GRAPHICS_VALUES[position], current.autoViewport ? 0 : current.width, current.autoViewport ? 0 : current.height);
             }
         });
         layout.addView(graphicsControl);
@@ -126,13 +126,13 @@ public final class LauncherActivity extends Activity {
         String[] viewports = new String[RuntimeOptions.VIEWPORT_WIDTHS.length];
         for (int i = 0; i < viewports.length; i++) viewports[i] = RuntimeOptions.viewportLabel(i);
         viewportControl.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, viewports));
-        viewportControl.setSelection(RuntimeOptions.viewportIndex(options.width, options.height));
+        viewportControl.setSelection(RuntimeOptions.viewportIndex(options));
         viewportControl.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onNothingSelected(AdapterView<?> parent) { }
             @Override public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) {
                 if (RuntimeService.active) {
                     RuntimeOptions current = RuntimeOptions.read(LauncherActivity.this);
-                    viewportControl.setSelection(RuntimeOptions.viewportIndex(current.width, current.height));
+                    viewportControl.setSelection(RuntimeOptions.viewportIndex(current));
                     RuntimeService.status = "Quit the game before changing runtime settings.";
                     return;
                 }

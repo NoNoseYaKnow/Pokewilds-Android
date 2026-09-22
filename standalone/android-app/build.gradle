@@ -14,8 +14,8 @@ android {
         // Android 13 is the first target. The complete guest JVM launch is
         // verified at target 33; broader Android versions need separate gates.
         targetSdk = Integer.parseInt(project.findProperty('runtimeTargetSdk') ?: '33')
-        versionCode 1
-        versionName '0.1-prototype'
+        versionCode 2
+        versionName '0.2-prototype'
         buildConfigField 'String', 'RUNTIME_GRAPHICS', '"' + runtimeGraphics + '"'
         ndk { abiFilters 'arm64-v8a' }
     }

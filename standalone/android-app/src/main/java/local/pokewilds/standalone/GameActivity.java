@@ -10,11 +10,26 @@ public final class GameActivity extends com.termux.x11.MainActivity {
     private final Runnable checkSession = new Runnable() {
         public void run() {
             if (!RuntimeService.active) { RuntimeService.surfaceReady = false; finish(); return; }
+            updateAutoViewport();
             RuntimeService.surfaceReady = getLorieView() != null
                 && getLorieView().connected() && getLorieView().getWidth() > 0;
             sessionHandler.postDelayed(this, 500);
         }
     };
+    private int viewportWidth, viewportHeight;
+    private void updateAutoViewport() {
+        if (getLorieView() == null) return;
+        RuntimeOptions options = RuntimeOptions.read(this);
+        android.graphics.Rect area = getLorieView().getAvailableRect();
+        if (area.width() <= 0 || area.height() <= 0) return;
+        int[] size = options.autoViewport ? ViewportSize.auto(area.width(), area.height())
+            : new int[]{options.width, options.height};
+        if (size[0] == viewportWidth && size[1] == viewportHeight) return;
+        viewportWidth = size[0]; viewportHeight = size[1];
+        RuntimeOptions.applyDisplaySize(this, viewportWidth, viewportHeight);
+        getLorieView().triggerCallback();
+        RuntimeService.requestedViewport = size;
+    }
     @Override public void onResume() { super.onResume(); sessionHandler.post(checkSession); }
     @Override public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);

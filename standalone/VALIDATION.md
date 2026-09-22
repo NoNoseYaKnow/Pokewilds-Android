@@ -1,5 +1,9 @@
 # Standalone prototype validation
 
+For prototype 0.2 Auto viewport and the initial physical DMG follow-up, see
+[AUTO_VIEWPORT_VALIDATION.md](AUTO_VIEWPORT_VALIDATION.md). The report below
+records the original 0.1 emulator implementation pass.
+
 This report separates the Android emulator evidence from the Pocket DMG
 acceptance gate. The game is the unchanged official PokeWilds 0.8.11 JAR.
 No physical device was used for this implementation pass.

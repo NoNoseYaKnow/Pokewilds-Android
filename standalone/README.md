@@ -125,7 +125,15 @@ physical-device check.
 From the launcher's **Manage saves** shortcut, stop the game before changing
 runtime settings. The graphics choices are Native GPU (recommended), Vulkan
 compatibility, OpenGL compatibility, and Software (slow diagnostics). The
-viewport choices are 480x432 (default), 640x576, and 960x864. The selections
+viewport choices are Auto — match screen (default for new installations),
+480x432, 640x576, and 960x864. Auto uses the available game display area,
+keeps a minimum 480x432 canvas, and adjusts to window-size changes.
+Screens narrower than 10:9 retain that canvas with letterboxing so the
+unchanged desktop menu remains fully visible. For
+example, 16:9 uses 768x432, 4:3 uses 576x432, and the Pocket DMG uses about
+496x432. Width is aligned to eight pixels for the X11 mode, so a tiny aspect
+ratio difference is possible. Existing fixed selections survive upgrades;
+choose Auto explicitly to switch. Changing graphics profiles preserves Auto. The selections
 are stored in the app's private runtime preferences and applied to the next
 session; the controls are disabled while a session is active. The normal
 launcher path keeps its one-tap auto-start behavior and uses the build's

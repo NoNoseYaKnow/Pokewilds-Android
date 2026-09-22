@@ -7,9 +7,8 @@ public final class GameApplication extends LorieApp {
     @Override public void onCreate() {
         // Initialize before LorieApp attaches its preference readers.
         RuntimeOptions options = RuntimeOptions.read(this);
+        RuntimeOptions.applyDisplaySize(this, options.width, options.height);
         PreferenceManager.getDefaultSharedPreferences(this).edit()
-            .putString("displayResolutionMode", "custom")
-            .putString("displayResolutionCustom", options.width + "x" + options.height)
             .putBoolean("showAdditionalKbd", false)
             .putBoolean("fullscreen", true).apply();
         super.onCreate();
