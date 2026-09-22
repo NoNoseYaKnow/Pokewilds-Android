@@ -4,8 +4,8 @@ This app packages the unchanged PokeWilds 0.8.11 release with a private Linux
 guest payload and Android host artifacts. It is a working standalone prototype
 tested on the Pocket DMG running Android 13.
 
-The signed ARM64 preview APK is available on the
-[GitHub release page](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/android-v0.3.0-preview.1).
+There is currently no public APK download. The build instructions below can
+produce a local APK.
 
 The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
 surface, accelerated VirGL through ANGLE Vulkan, and bundled PulseAudio.
