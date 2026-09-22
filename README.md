@@ -10,8 +10,10 @@ separate testing. This is still a prototype, not a general Android release.
 
 ## Install and play
 
-Install a signed standalone APK built from this branch. The source repository
-does not include a prebuilt standalone APK; see [Build from source](#build-from-source).
+**[Download the standalone APK](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/download/android-v0.3.0-preview.1/PokeWilds-Android-0.3-preview.1-arm64.apk)**
+for ARM64 Android 13. Install the downloaded APK on your device. This is a
+preview build; see the [release notes](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/android-v0.3.0-preview.1)
+for its checksum and supported-device details.
 
 Open **PokeWilds** and choose **Start / resume** on the first launch. The app
 prepares its bundled files locally and shows progress. Later launches open the
