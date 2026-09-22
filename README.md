@@ -110,3 +110,7 @@ bash launcher/build.sh
 The result is `bin/PokeWilds-Launcher.apk`. `ANDROID_BUILD_TOOLS_VERSION` can select another installed build-tools version. The build generates an ignored local signing keystore on first use; keep it to sign subsequent updates. Set `POKEWILDS_KEYSTORE` and `POKEWILDS_STORE_PASSWORD` to use your own signing identity. A different signing key cannot update an already installed APK without uninstalling that launcher first; uninstalling the launcher does not remove Termux's game files.
 
 The compiled close helper is built on-device by the installer from `pokewilds-close.c`.
+
+## Launcher opens a blank display after quitting
+
+The graphics processes can survive after their filesystem sockets disappear. The launcher checks both X11 connectivity and the X11/VirGL socket files, restarts stale servers, and waits for their sockets before starting Java. Reinstall the current `pokewilds.sh` into Termux home to update an older installation; the shortcut APK does not need rebuilding for this fix. Startup diagnostics are written to `~/pokewilds-launch.log`, `~/pokewilds-x11.log`, and `~/pokewilds-gpu.log`.
