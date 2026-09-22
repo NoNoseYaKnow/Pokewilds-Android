@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="manage_saves"
+        android:enabled="true"
+        android:icon="@drawable/ic_pokewilds"
+        android:shortcutShortLabel="@string/manage_saves_short"
+        android:shortcutLongLabel="@string/manage_saves_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="@string/runtime_application_id"
+            android:targetClass="local.pokewilds.standalone.LauncherActivity">
+            <extra android:name="local.pokewilds.standalone.MANAGE_SAVES" android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>
