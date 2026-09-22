@@ -18,6 +18,7 @@ public final class RuntimeService extends Service {
     static volatile boolean displayFocused;
     static volatile boolean displayReady;
     static volatile boolean surfaceReady;
+    static volatile boolean saveDialogVisible;
     static volatile int[] requestedViewport;
     static final Semaphore DATA_LOCK = new Semaphore(1);
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -137,7 +138,8 @@ public final class RuntimeService extends Service {
             status = forcedStop ? "Stopped without saving" : stopping ? "Startup cancelled" : "Unable to start: " + e.getMessage();
             try (PrintWriter out = new PrintWriter(new FileOutputStream(log, true))) { e.printStackTrace(out); } catch (IOException ignored) { }
         } finally {
-            running = false; displayReady = false; surfaceReady = false; displayFocused = false; active = false;
+            running = false; displayReady = false; surfaceReady = false; displayFocused = false;
+            saveDialogVisible = false; active = false;
             cleanup(); DATA_LOCK.release(); stopForeground(true); stopSelf();
         }
     }
@@ -194,8 +196,26 @@ public final class RuntimeService extends Service {
         try {
             status = "Waiting for the game's save / quit dialog…";
             // WM_DELETE_WINDOW preserves the desktop game's own save/cancel handling.
-            start(guest(Arrays.asList("/bin/sh", "-c", "w=$(xdotool search --name '^PokeWilds$' | head -n1); test -n \"$w\" && /usr/local/bin/pokewilds-close \"$w\""))).waitFor();
+            Process close = start(guest(Arrays.asList("/bin/sh", "-c", "w=$(xdotool search --name '^PokeWilds$' | head -n1); test -n \"$w\" && /usr/local/bin/pokewilds-close \"$w\"")));
+            if (!close.waitFor(5, TimeUnit.SECONDS) || close.exitValue() != 0) {
+                close.destroy();
+                throw new IOException("Could not open the game's quit dialog");
+            }
+            saveDialogVisible = true;
+            long showDeadline = android.os.SystemClock.elapsedRealtime() + 5000;
+            boolean sawDialog = false;
+            while (running && !stopping) {
+                Process probe = start(guest(Arrays.asList("/bin/sh", "-c",
+                    "/usr/bin/xdotool search --name '^WARNING$' >/dev/null 2>&1")));
+                boolean visible = probe.waitFor(2, TimeUnit.SECONDS) && probe.exitValue() == 0;
+                if (probe.isAlive()) probe.destroy();
+                processes.remove(probe);
+                if (visible) sawDialog = true;
+                else if (sawDialog || android.os.SystemClock.elapsedRealtime() >= showDeadline) break;
+                Thread.sleep(350);
+            }
         } catch (Exception e) { status = "Quit request failed: " + e.getMessage(); }
+        finally { saveDialogVisible = false; }
     }
     private void cleanup() {
         synchronized (processes) {

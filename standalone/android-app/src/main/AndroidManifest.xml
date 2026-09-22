@@ -9,6 +9,7 @@
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
         <activity android:name=".GameActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboard|keyboardHidden|density" />
+        <activity android:name=".GameSettingsActivity" android:exported="false" />
         <activity android:name="com.termux.x11.MainActivity" tools:node="remove" />
         <activity android:name="com.termux.x11.LoriePreferences" tools:node="remove" />
         <service android:name=".RuntimeService" android:exported="false" />

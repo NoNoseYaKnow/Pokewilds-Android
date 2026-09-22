@@ -122,8 +122,8 @@ lacks the surfaceless-context extension required by this VirGL build. This is
 an emulator compatibility choice; the DMG's default native profile needs a
 physical-device check.
 
-From the launcher's **Manage saves** shortcut, stop the game before changing
-runtime settings. The graphics choices are Native GPU (recommended), Vulkan
+From the launcher's **App settings** shortcut, stop the game before changing
+runtime or game settings. The graphics choices are Native GPU (recommended), Vulkan
 compatibility, OpenGL compatibility, and Software (slow diagnostics). The
 viewport choices are Auto — match screen (default for new installations),
 480x432, 640x576, and 960x864. Auto uses the available game display area,
@@ -138,6 +138,29 @@ are stored in the app's private runtime preferences and applied to the next
 session; the controls are disabled while a session is active. The normal
 launcher path keeps its one-tap auto-start behavior and uses the build's
 `native` default until a management selection is saved.
+
+On-screen controls can be set to Auto, On, or Off. Auto displays them when no
+game controller is connected. The overlay provides D-pad, A/B, Start, and C/V
+shoulder actions, supports held and simultaneous inputs, and leaves the center
+of the game available for direct touch. Its small toggle hides or restores the
+controls during a session.
+The X11 cursor is hidden over the game. Taps use screen coordinates so the
+game's Swing save/quit dialog can still be selected by touch. In that dialog,
+Left/Right moves between Yes and No, and A activates the focused choice.
+The Keyboard control beside the overlay's hide button shows or hides the Android
+soft keyboard. On a gamepad, the right stick click (R3) does the same by default;
+the shortcut can be changed or turned off in App settings. Android Back opens a
+Game menu with a Show keyboard choice, so touch users can still reach it when
+the on-screen controls are Off or hidden.
+
+**PokeWilds game settings** edits the non-binding options in the private
+`game/settings.txt` used by the unchanged game. Keyboard and gamepad bindings
+are preserved but are not exposed in the app. Saving retains bindings, unknown
+lines, and comments, writes through a staged file, and keeps the
+previous contents in `settings.txt.backup`. Changes apply on the next game
+start. Boolean options and text speed use lists of values recognized by
+PokeWilds 0.8.11. Gamepad dead zone accepts 0 through 1, while zoom accepts a
+positive number. The editor is disabled while the game is running.
 
 ## Signed local build
 
@@ -162,17 +185,18 @@ bundled third-party artifacts.
 
 Install the APK and choose **Start / resume** on first launch. Preparation is
 local and shows progress. Subsequent ordinary launches start the game directly.
-Long-press the Android launcher icon and choose **Manage saves** to open settings,
+Long-press the Android launcher icon and choose **App settings** to open settings,
 import/export, recovery, and startup logs. The running notification also opens
-this screen. ES-DE can import the app as a normal Android game; its actual
+this screen. Android Back in the game also offers **App settings**. ES-DE can import the app as a normal Android game; its actual
 Pocket DMG flow remains a device check.
 
 D-pad/stick directions are mapped to arrows, A to Z, B to X, Start to Enter,
-and shoulders to C/V. Start activates the menu's Go option and the focused
-Swing save-dialog button. Android Back opens **Quit / Keep playing /
-Force-stop recovery**. Quit asks the game to close normally; accept its save
-prompt before leaving. Force-stop is for a hung session and discards unsaved
-progress. Home leaves the session running; do not assume the game autosaves.
+and shoulders to C/V. A activates the focused Swing save-dialog button.
+Android Back opens the Game menu with **Keep playing / Show keyboard / App settings /
+Quit PokeWilds**. Quit asks the game to close normally; accept its save prompt before
+leaving. Force-stop recovery remains available in App settings for a hung
+session and discards unsaved progress. Home leaves the session running; do not
+assume the game autosaves.
 
 Use **Export saves** after saving and quitting, then choose a location in the
 Android document picker. Uninstalling removes private worlds: export first.

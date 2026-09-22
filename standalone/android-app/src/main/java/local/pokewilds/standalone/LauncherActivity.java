@@ -20,6 +20,7 @@ public final class LauncherActivity extends Activity {
     private boolean manuallyStarted;
     private Spinner graphicsControl;
     private Spinner viewportControl;
+    private Spinner touchControl;
     private final java.util.concurrent.ExecutorService files = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -52,7 +53,12 @@ public final class LauncherActivity extends Activity {
         forceStop.setOnClickListener(v -> confirmForceStop()); layout.addView(forceStop);
         Button quit = new Button(this); quit.setText("Quit game");
         quit.setOnClickListener(v -> openGameForQuit()); layout.addView(quit);
-        if (managementMode) addRuntimeControls(layout);
+        if (managementMode) {
+            addRuntimeControls(layout);
+            Button gameSettings = new Button(this); gameSettings.setText("PokeWilds game settings");
+            gameSettings.setOnClickListener(v -> startActivity(new Intent(this, GameSettingsActivity.class)));
+            layout.addView(gameSettings);
+        }
         Button logs = new Button(this); logs.setText("View startup log");
         logs.setOnClickListener(v -> {
             String text;
@@ -142,6 +148,36 @@ public final class LauncherActivity extends Activity {
             }
         });
         layout.addView(viewportControl);
+        TextView touchLabel = new TextView(this); touchLabel.setText("On-screen controls"); layout.addView(touchLabel);
+        touchControl = new Spinner(this);
+        touchControl.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
+            TouchControls.TOUCH_MODE_LABELS));
+        touchControl.setSelection(TouchControls.readTouchMode(this));
+        touchControl.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+            @Override public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) {
+                if (RuntimeService.active) {
+                    touchControl.setSelection(TouchControls.readTouchMode(LauncherActivity.this));
+                    RuntimeService.status = "Quit the game before changing runtime settings.";
+                    return;
+                }
+                TouchControls.saveTouchMode(LauncherActivity.this, position);
+            }
+        });
+        layout.addView(touchControl);
+        TextView keyboardLabel = new TextView(this);
+        keyboardLabel.setText("Show keyboard with gamepad"); layout.addView(keyboardLabel);
+        Spinner keyboardControl = new Spinner(this);
+        keyboardControl.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
+            KeyboardShortcut.LABELS));
+        keyboardControl.setSelection(KeyboardShortcut.read(this));
+        keyboardControl.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+            @Override public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) {
+                KeyboardShortcut.save(LauncherActivity.this, position);
+            }
+        });
+        layout.addView(keyboardControl);
         updateRuntimeControls();
     }
 
@@ -150,6 +186,7 @@ public final class LauncherActivity extends Activity {
         boolean enabled = !RuntimeService.active;
         graphicsControl.setEnabled(enabled);
         viewportControl.setEnabled(enabled);
+        touchControl.setEnabled(enabled);
     }
     private void openGameForQuit() {
         if (!RuntimeService.active) { RuntimeService.status = "No game is running."; return; }
