@@ -110,3 +110,7 @@ bash launcher/build.sh
 The result is `bin/PokeWilds-Launcher.apk`. `ANDROID_BUILD_TOOLS_VERSION` can select another installed build-tools version. The build generates an ignored local signing keystore on first use; keep it to sign subsequent updates. Set `POKEWILDS_KEYSTORE` and `POKEWILDS_STORE_PASSWORD` to use your own signing identity. A different signing key cannot update an already installed APK without uninstalling that launcher first; uninstalling the launcher does not remove Termux's game files.
 
 The compiled close helper is built on-device by the installer from `pokewilds-close.c`.
+
+## Standalone Android roadmap
+
+See the [standalone Android implementation plan](docs/standalone-android-plan.md) for packaging the unchanged 0.8.11 game and its private runtime into one APK, including execution feasibility, embedded graphics, save migration, and release checks. This is a plan; the APK currently provided by this repository still requires Termux.
