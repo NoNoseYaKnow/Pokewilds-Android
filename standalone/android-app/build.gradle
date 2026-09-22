@@ -1,0 +1,62 @@
+apply plugin: 'com.android.application'
+def runtimeGraphics = project.findProperty('runtimeGraphics') ?: 'native'
+if (!(runtimeGraphics in ['native', 'angle-gl', 'angle-vulkan', 'software'])) {
+    throw new GradleException('runtimeGraphics must be native, angle-gl, angle-vulkan, or software')
+}
+android {
+    buildFeatures { buildConfig true; resValues true }
+    namespace 'local.pokewilds.standalone'
+    compileSdk 36
+    defaultConfig {
+        applicationId = (project.findProperty('runtimeApplicationId') ?: 'local.pokewilds.standalone')
+        resValue 'string', 'runtime_application_id', applicationId
+        minSdk 26
+        // Android 13 is the first target. The complete guest JVM launch is
+        // verified at target 33; broader Android versions need separate gates.
+        targetSdk = Integer.parseInt(project.findProperty('runtimeTargetSdk') ?: '33')
+        versionCode 1
+        versionName '0.1-prototype'
+        buildConfigField 'String', 'RUNTIME_GRAPHICS', '"' + runtimeGraphics + '"'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_9
+        targetCompatibility JavaVersion.VERSION_1_9
+    }
+    androidResources { noCompress += ['bin'] }
+    packaging { jniLibs { useLegacyPackaging = true } }
+    sourceSets.main {
+        assets.srcDirs += ['../runtime/build/android-assets']
+        jniLibs.srcDirs += ['../native/build/jniLibs']
+    }
+    signingConfigs {
+        localRelease {
+            def key = rootProject.file('.signing/standalone.p12')
+            def password = rootProject.file('.signing/password')
+            if (key.exists() && password.exists()) {
+                storeFile key
+                storePassword password.text.trim()
+                keyAlias 'standalone'
+                keyPassword password.text.trim()
+            }
+        }
+    }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.localRelease } }
+}
+dependencies {
+    implementation project(':lorie')
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'org.apache.commons:commons-compress:1.27.1'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// AAPT transparently expands assets ending in .gz and removes that suffix.
+// Preserve the signed/hashed compressed payload byte-for-byte as runtime.bin.
+tasks.register('prepareRuntimeAssets', Sync) {
+    from('../runtime/build/assets') {
+        include 'runtime.tar.gz', 'payload.properties'
+        rename 'runtime.tar.gz', 'runtime.bin'
+    }
+    into('../runtime/build/android-assets')
+}
+tasks.named('preBuild').configure { dependsOn('prepareRuntimeAssets') }

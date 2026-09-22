@@ -6,3 +6,7 @@ launcher/aligned.apk
 launcher/*.p12
 launcher/*.jks
 bin/*.idsig
+
+/work/
+
+/standalone-build-logs/

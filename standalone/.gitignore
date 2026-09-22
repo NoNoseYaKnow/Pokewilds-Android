@@ -1,0 +1,14 @@
+.cache/
+.gradle/
+**/build/
+local.properties
+*.jks
+*.p12
+**/__pycache__/
+runtime/cache/
+standalone-build-logs/
+out/
+
+native/.build/
+
+.signing/

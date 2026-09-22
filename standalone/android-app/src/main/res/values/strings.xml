@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">PokeWilds Standalone</string>
+    <string name="manage_saves_short">Manage saves</string>
+    <string name="manage_saves_long">Manage PokeWilds saves</string>
+</resources>
