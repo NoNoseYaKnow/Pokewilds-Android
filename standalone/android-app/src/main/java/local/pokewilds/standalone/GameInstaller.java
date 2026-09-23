@@ -114,6 +114,8 @@ final class GameInstaller {
                 if (!s.archiveHash.equals(sha256(archive, cancelled))) throw new IOException("Game ZIP checksum mismatch; choose the official v" + s.version + " archive");
                 Files.createDirectories(stage);
                 extractArchive(archive, stage, s.archiveMember, progress, cancelled);
+                // Extraction has finished; release the private ZIP copy before activation.
+                Files.delete(archive);
             }
             for (String required : s.requiredFiles)
                 if (!Files.isRegularFile(stage.resolve(required), LinkOption.NOFOLLOW_LINKS))
@@ -127,9 +129,16 @@ final class GameInstaller {
             activate(game, stage);
             progress.accept("Game files ready");
         } finally {
-            Files.deleteIfExists(archive);
-            SafeTar.deleteTree(stage);
+            try { Files.deleteIfExists(archive); }
+            finally { SafeTar.deleteTree(stage); }
         }
+    }
+
+    /** Remove files left by a process kill, only while the game data lock is held. */
+    static void discardInterruptedFiles(Path files) throws IOException {
+        Path archive = files.resolve("game-download.part");
+        try { Files.deleteIfExists(archive); }
+        finally { SafeTar.deleteTree(files.resolve("game.preparing")); }
     }
 
     private static void download(Spec s, Path archive, Consumer<String> progress,

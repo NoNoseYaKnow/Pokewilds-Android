@@ -25,6 +25,9 @@ the pinned release archive; an extracted folder is checked for the expected
 game files. Setup shows progress. Once it finishes, **Start / resume** opens the game; later
 launches go straight to the game. The APK can also be imported into Android
 game frontends as a normal app.
+The app deletes its temporary ZIP copy after extraction and removes incomplete
+downloads on the next launch. A ZIP you selected from device storage stays in
+its original location.
 
 The D-pad or left stick moves, A and B act as the game's action buttons, Start
 opens PokeWilds's in-game menu, and L1/R1 provide C/V. For phones,

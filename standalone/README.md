@@ -199,6 +199,9 @@ is checked for the expected game files. The app copies verified files into its
 app-private storage and does not require Termux or another runtime app. Setup reports progress and the
 download can be cancelled. The game starts after setup; subsequent ordinary
 launches start it directly.
+The app deletes its temporary downloaded or copied ZIP after extraction and
+cleans up incomplete transfers on the next launch. A selected ZIP remains in
+its original location.
 Long-press the Android launcher icon and choose **App settings** to open settings,
 import/export, recovery, and startup logs. The running notification also opens
 this screen. Android Back in the game also offers **App settings**. ES-DE can import the app as a normal Android game; its actual

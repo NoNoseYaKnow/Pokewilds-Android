@@ -11,6 +11,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import java.io.IOException;
 
 public final class LauncherActivity extends Activity {
     public static final String MANAGE_SAVES_EXTRA = "local.pokewilds.standalone.MANAGE_SAVES";
@@ -67,6 +68,11 @@ public final class LauncherActivity extends Activity {
         super.onCreate(state);
         autoDownloadAttempted = getPreferences(MODE_PRIVATE).getBoolean("auto-download-attempted", false);
         managementMode = isManagementIntent(getIntent());
+        if (RuntimeService.DATA_LOCK.tryAcquire()) {
+            try { GameInstaller.discardInterruptedFiles(getFilesDir().toPath()); }
+            catch (IOException error) { GameAcquisitionService.status = "Could not clean up interrupted game setup: " + error.getMessage(); }
+            finally { RuntimeService.DATA_LOCK.release(); }
+        }
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(32, 48, 32, 32);

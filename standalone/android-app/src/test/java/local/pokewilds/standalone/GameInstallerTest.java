@@ -98,6 +98,25 @@ public class GameInstallerTest {
         } finally { SafeTar.deleteTree(root); }
     }
 
+    @Test public void restartRemovesInterruptedDownloadWithoutDeletingGame() throws Exception {
+        Path root = Files.createTempDirectory("game-installer-cleanup-test");
+        try {
+            Path game = root.resolve("game");
+            Files.createDirectory(game);
+            Files.write(game.resolve("pokewilds.jar"), "installed".getBytes(StandardCharsets.UTF_8));
+            Files.write(root.resolve("game-download.part"), "partial ZIP".getBytes(StandardCharsets.UTF_8));
+            Path stage = root.resolve("game.preparing");
+            Files.createDirectory(stage);
+            Files.write(stage.resolve("pokewilds.jar"), "partial game".getBytes(StandardCharsets.UTF_8));
+
+            GameInstaller.discardInterruptedFiles(root);
+
+            assertFalse(Files.exists(root.resolve("game-download.part")));
+            assertFalse(Files.exists(stage));
+            assertEquals("installed", text(game.resolve("pokewilds.jar")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
     private static String text(Path path) throws IOException {
         return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
