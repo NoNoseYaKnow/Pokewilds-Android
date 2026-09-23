@@ -9,7 +9,6 @@ import android.hardware.input.InputManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
-import android.util.SparseIntArray;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -38,7 +37,8 @@ public final class TouchControls extends View implements InputManager.InputDevic
     private final RectF[] dpad = {new RectF(), new RectF(), new RectF(), new RectF()};
     private final RectF aButton = new RectF(), bButton = new RectF(), startButton = new RectF();
     private final RectF cButton = new RectF(), vButton = new RectF(), toggleButton = new RectF(), keyboardButton = new RectF();
-    private final SparseIntArray activePointers = new SparseIntArray();
+    private final TouchInputState inputState = new TouchInputState(
+        (key, down) -> sendKey(key, down ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP));
     private final KeySink keySink;
     private final Runnable keyboardToggle;
     private final InputManager inputManager;
@@ -99,12 +99,7 @@ public final class TouchControls extends View implements InputManager.InputDevic
 
     /** Sends ACTION_UP for every key currently held by a finger. */
     public void releaseAll() {
-        SparseIntArray released = new SparseIntArray();
-        for (int i = 0; i < activePointers.size(); i++) {
-            int key = activePointers.valueAt(i);
-            if (released.indexOfKey(key) < 0) { sendKey(key, KeyEvent.ACTION_UP); released.put(key, 1); }
-        }
-        activePointers.clear();
+        inputState.releaseAll();
     }
 
     public void refreshControllerState() {
@@ -188,43 +183,21 @@ public final class TouchControls extends View implements InputManager.InputDevic
             if (key == TOGGLE) { controlsHidden = !controlsHidden; if (controlsHidden) releaseAll(); invalidate(); return true; }
             if (key == KEYBOARD) { if (keyboardToggle != null) keyboardToggle.run(); return true; }
             if (key == NONE || !shouldDrawControls()) return false;
-            changePointerKey(pointer, key); invalidate(); return true;
+            inputState.down(pointer, key); invalidate(); return true;
         }
         if (action == MotionEvent.ACTION_MOVE) {
             for (int i = 0; i < event.getPointerCount(); i++) {
-                int pointer = event.getPointerId(i); if (activePointers.indexOfKey(pointer) < 0) continue;
-                int oldKey = activePointers.get(pointer), nextKey = shouldDrawControls() ? hitKey(event.getX(i), event.getY(i)) : NONE;
+                int pointer = event.getPointerId(i);
+                int nextKey = shouldDrawControls() ? hitKey(event.getX(i), event.getY(i)) : NONE;
                 if (nextKey == TOGGLE || nextKey == KEYBOARD) nextKey = NONE;
-                if (nextKey != oldKey) changePointerKey(pointer, nextKey);
+                inputState.move(pointer, nextKey);
             }
-            return activePointers.size() != 0;
+            return inputState.hasCapturedPointers();
         }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
-            releasePointer(event.getPointerId(event.getActionIndex())); if (action == MotionEvent.ACTION_UP) performClick(); return true;
+            inputState.up(event.getPointerId(event.getActionIndex())); if (action == MotionEvent.ACTION_UP) performClick(); return true;
         }
         if (action == MotionEvent.ACTION_CANCEL) { releaseAll(); return true; }
-        return false;
-    }
-
-    private void releasePointer(int pointer) {
-        changePointerKey(pointer, NONE);
-    }
-
-    private void changePointerKey(int pointer, int nextKey) {
-        int oldKey = activePointers.get(pointer, NONE);
-        if (oldKey != NONE) {
-            activePointers.delete(pointer);
-            if (!isKeyHeld(oldKey)) sendKey(oldKey, KeyEvent.ACTION_UP);
-        }
-        if (nextKey != NONE) {
-            boolean alreadyHeld = isKeyHeld(nextKey);
-            activePointers.put(pointer, nextKey);
-            if (!alreadyHeld) sendKey(nextKey, KeyEvent.ACTION_DOWN);
-        }
-    }
-
-    private boolean isKeyHeld(int key) {
-        for (int i = 0; i < activePointers.size(); i++) if (activePointers.valueAt(i) == key) return true;
         return false;
     }
 
@@ -241,7 +214,8 @@ public final class TouchControls extends View implements InputManager.InputDevic
 
     private boolean hasController() {
         for (int id : InputDevice.getDeviceIds()) { InputDevice device = InputDevice.getDevice(id); if (device == null) continue;
-            int sources = device.getSources(); if ((sources & InputDevice.SOURCE_GAMEPAD) != 0 || (sources & InputDevice.SOURCE_JOYSTICK) != 0) return true; }
+            int sources = device.getSources(); if (TouchInputState.isControllerSource(sources,
+                InputDevice.SOURCE_GAMEPAD, InputDevice.SOURCE_JOYSTICK)) return true; }
         return false;
     }
 
