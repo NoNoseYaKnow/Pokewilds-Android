@@ -1,5 +1,26 @@
 # Standalone prototype validation
 
+## 0.6 save import and App settings shortcut (2026-09-23)
+
+The importer accepts an app export ZIP, a native ZIP containing one `.sav`
+world folder, or a selected `.sav` folder with its JSON ZIP files and PNG.
+Regression tests cover each import path, malformed or multiple-world archives,
+world-name collisions, and cleanup of temporary folder-import files. The
+Android JVM suite and release build passed. The signed APK verifier reported
+no errors or warnings, verified the signature and runtime payload hash, and
+confirmed that no PokeWilds game files are bundled.
+
+The issue reporter's `ghost_island.sav.zip` imported on the Pocket DMG while
+the app's own save export continued to import. The user confirmed the imported
+world works in game. Selecting the same extracted world folder through
+Android's folder picker reached the expected collision check without replacing
+the installed world. On a Samsung SM-S901U, long-pressing the app icon and
+choosing **App settings** opened the initial menu without launching the game.
+
+Version code 6, version name 0.6: `PokeWilds-Android-0.6-arm64.apk` is
+207,147,288 bytes, SHA-256
+`086b621c6e62f9973c85456dc481dbd69a40e72ae7de9f0add24bd65ca0c133a`.
+
 ## 0.5 mods and phone controls (2026-09-22)
 
 The app now imports a ZIP or Android-selected folder into the game's private

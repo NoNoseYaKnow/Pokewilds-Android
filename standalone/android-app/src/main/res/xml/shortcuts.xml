@@ -6,9 +6,10 @@
         android:icon="@drawable/ic_pokewilds"
         android:shortcutShortLabel="@string/manage_saves_short"
         android:shortcutLongLabel="@string/manage_saves_long">
+        <!-- Shortcut targets must be literal package names; resource IDs are not resolved here. -->
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="@string/runtime_application_id"
+            android:targetPackage="local.pokewilds.standalone"
             android:targetClass="local.pokewilds.standalone.LauncherActivity">
             <extra android:name="local.pokewilds.standalone.MANAGE_SAVES" android:value="true" />
         </intent>

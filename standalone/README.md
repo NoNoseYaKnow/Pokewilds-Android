@@ -9,7 +9,7 @@ Touch controls and mod transfer were also tested on a Samsung SM-S901U running
 Android 16.
 
 The signed APK is available from the
-[v0.5.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.5.0).
+[v0.6.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.6.0).
 The build instructions below can produce a local APK.
 
 The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
