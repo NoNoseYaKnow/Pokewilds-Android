@@ -225,6 +225,15 @@ JSON saves from Termux. Legacy Kryo saves are not supported by this importer.
 Imports preserve existing settings, refuse world-name collisions, merge
 identical/missing mod files, and refuse conflicting mod contents.
 
+For direct mod installation, quit the game and open **App settings**. **Import
+mods ZIP** accepts a ZIP with `mods/` at its root or mod files directly at its
+root; **Import mods folder** selects the folder containing the mod files.
+These actions merge into the app-private `mods/` directory and replace files
+at matching paths. **Export mods ZIP** saves a copy through Android's document
+picker before making changes. Imports stage and validate files, then swap the
+merged directory into place; an interrupted swap is recovered on next launch.
+PokeWilds loads the changes on its next start.
+
 ## Prototype boundary
 
 The first supported validation target is Android 13 ARM64, with target SDK 33.

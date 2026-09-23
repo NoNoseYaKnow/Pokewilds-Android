@@ -58,6 +58,16 @@ JSON save archives. Export worlds before uninstalling: uninstalling removes the
 app's private game files and saves. See [save migration](standalone/migration/README.md)
 for transferring existing worlds.
 
+## Mods
+
+After quitting the game, open **App settings** and choose **Import mods ZIP**
+or **Import mods folder**. The selected files are copied into the game's
+`mods/` folder; a ZIP can contain a top-level `mods/` folder or the mod files
+directly. Files at matching paths replace the installed copies. Use **Export
+mods ZIP** first if you want a backup. Mods are loaded when the game starts
+again. This installs PokeWilds file mods such as sprites and music, not Java
+plugins.
+
 ## Build from source
 
 The build recipe and complete prerequisites are in the

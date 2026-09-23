@@ -69,8 +69,12 @@ public final class LauncherActivity extends Activity {
         autoDownloadAttempted = getPreferences(MODE_PRIVATE).getBoolean("auto-download-attempted", false);
         managementMode = isManagementIntent(getIntent());
         if (RuntimeService.DATA_LOCK.tryAcquire()) {
-            try { GameInstaller.discardInterruptedFiles(getFilesDir().toPath()); }
-            catch (IOException error) { GameAcquisitionService.status = "Could not clean up interrupted game setup: " + error.getMessage(); }
+            try {
+                GameInstaller.discardInterruptedFiles(getFilesDir().toPath());
+                ModManager.recover(getFilesDir().toPath().resolve("game"));
+            } catch (IOException error) {
+                GameAcquisitionService.status = "Could not recover app files: " + error.getMessage();
+            }
             finally { RuntimeService.DATA_LOCK.release(); }
         }
         LinearLayout layout = new LinearLayout(this);
@@ -132,6 +136,15 @@ public final class LauncherActivity extends Activity {
         }); gamePanel.addView(export);
         Button importButton = new Button(this); importButton.setText("Import saves");
         importButton.setOnClickListener(v -> chooseSaveImport()); gamePanel.addView(importButton);
+        TextView modsHelp = new TextView(this);
+        modsHelp.setText("Mods: quit the game first. Importing adds files under mods/ and replaces files at matching paths. Export mods first if you want a backup.");
+        gamePanel.addView(modsHelp);
+        Button importModsZip = new Button(this); importModsZip.setText("Import mods ZIP");
+        importModsZip.setOnClickListener(v -> chooseModsZip()); gamePanel.addView(importModsZip);
+        Button importModsFolder = new Button(this); importModsFolder.setText("Import mods folder");
+        importModsFolder.setOnClickListener(v -> chooseModsFolder()); gamePanel.addView(importModsFolder);
+        Button exportMods = new Button(this); exportMods.setText("Export mods ZIP");
+        exportMods.setOnClickListener(v -> chooseModsExport()); gamePanel.addView(exportMods);
         layout.addView(gamePanel);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(layout); setContentView(scroll);
@@ -153,6 +166,33 @@ public final class LauncherActivity extends Activity {
                     data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
             } catch (SecurityException ignored) { /* This provider did not offer persistent access. */ }
             startAcquisition(request == 12 ? GameAcquisitionService.LOCAL_ZIP : GameAcquisitionService.LOCAL_FOLDER, source);
+            return;
+        }
+        if (request == 14 || request == 15 || request == 16) {
+            if (RuntimeService.active) { setSaveStatus("Quit the game before managing mods."); return; }
+            setSaveStatus(request == 16 ? "Exporting mods…" : "Importing mods…");
+            android.net.Uri selected = data.getData();
+            files.submit(() -> {
+                if (!RuntimeService.DATA_LOCK.tryAcquire()) { setSaveStatus("Wait for game setup or quit the game before managing mods."); return; }
+                try {
+                    java.nio.file.Path game = new java.io.File(getFilesDir(), "game").toPath();
+                    if (request == 14) {
+                        try (java.io.InputStream input = getContentResolver().openInputStream(selected)) {
+                            if (input == null) throw new IOException("Could not open mod ZIP");
+                            ModManager.importZip(input, game);
+                        }
+                    } else if (request == 15) {
+                        ModManager.importFolder(this, selected, game);
+                    } else {
+                        try (java.io.OutputStream output = getContentResolver().openOutputStream(selected)) {
+                            if (output == null) throw new IOException("Could not create mod ZIP");
+                            ModManager.exportZip(game, output);
+                        }
+                    }
+                    setSaveStatus(request == 16 ? "Mods exported" : "Mods installed; restart the game to load them");
+                } catch (Exception error) { setSaveStatus("Mod transfer failed: " + error.getMessage()); }
+                finally { RuntimeService.DATA_LOCK.release(); }
+            });
             return;
         }
         if (RuntimeService.active) { setSaveStatus("Quit the game first."); return; }
@@ -187,6 +227,24 @@ public final class LauncherActivity extends Activity {
         if (GameAcquisitionService.active) { setSaveStatus("Cancel or finish game setup before importing saves."); return; }
         startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip")
             .addCategory(Intent.CATEGORY_OPENABLE), 11);
+    }
+
+    private void chooseModsZip() {
+        if (RuntimeService.active) { setSaveStatus("Quit the game before managing mods."); return; }
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip")
+            .addCategory(Intent.CATEGORY_OPENABLE), 14);
+    }
+
+    private void chooseModsFolder() {
+        if (RuntimeService.active) { setSaveStatus("Quit the game before managing mods."); return; }
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), 15);
+    }
+
+    private void chooseModsExport() {
+        if (RuntimeService.active) { setSaveStatus("Quit the game before managing mods."); return; }
+        startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/zip")
+            .addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "pokewilds-mods.zip"), 16);
     }
 
     private void setSaveStatus(String value) {

@@ -73,6 +73,7 @@ public final class RuntimeService extends Service {
             if (stopping) throw new InterruptedException("Startup cancelled");
             File game = new File(getFilesDir(), "game");
             SaveArchive.recoverInterruptedImport(game.toPath());
+            ModManager.recover(game.toPath());
             for (String name : new String[]{"libproot.so", "libproot-loader.so", "libvirgl_test_server_android.so", "libpulseaudio.so"}) {
                 if (!new File(nativeDir, name).isFile()) throw new IOException("Build is missing native runtime component: " + name);
             }

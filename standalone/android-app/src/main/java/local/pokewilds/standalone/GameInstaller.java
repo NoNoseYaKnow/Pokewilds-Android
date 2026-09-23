@@ -88,6 +88,7 @@ final class GameInstaller {
         Path game = context.getFilesDir().toPath().resolve("game");
         recover(game);
         SaveArchive.recoverInterruptedImport(game);
+        ModManager.recover(game);
         if (isInstalled(context)) { progress.accept("Game files ready"); return; }
         Path stage = game.resolveSibling("game.preparing");
         Path archive = game.resolveSibling("game-download.part");
