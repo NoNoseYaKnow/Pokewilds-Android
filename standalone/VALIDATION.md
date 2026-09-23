@@ -1,5 +1,36 @@
 # Standalone prototype validation
 
+## 0.5 mods and phone controls (2026-09-22)
+
+The app now imports a ZIP or Android-selected folder into the game's private
+`mods/` directory and exports a mods ZIP. Imports stage a merged directory,
+reject unsafe paths, and recover an interrupted swap. The touch overlay keeps a
+finger captured when it slides off a D-pad button, allowing movement to resume
+when it slides back on. Auto visibility checks complete gamepad/joystick source
+masks so a phone's keyboard or touchscreen does not count as a controller.
+
+The signed implementation was installed over the existing app on a Samsung
+SM-S901U running Android 16 without clearing app data. The game launched;
+on-screen controls were visible with Show controls set to Auto, D-pad movement
+resumed after sliding off and back on without lifting, and mod ZIP import and
+export succeeded. The exported ZIP contained the exact test file imported
+through Android's document picker. The Android JVM suite passed, including
+eight mod-management and three touch-input regression tests. Two mod tests
+cover packs with over 10,000 entries and a single enclosing folder.
+
+The signed version-5 APK was then installed over the same app without clearing
+its data. The user's `0.8.9.v1.5.0.zip` pack has 11,877 ZIP entries and its main
+`mods/` directory sits inside one enclosing folder. It imported successfully,
+and the user confirmed that the game launched with the mod changes visible.
+
+The release metadata then advanced to version code 5 and version name 0.5.
+The signed release APK passed the static verifier with zero errors or warnings:
+its signature is valid, its runtime payload hash matches, and it contains no
+PokeWilds game files. `PokeWilds-Android-0.5-arm64.apk` is 207,146,596 bytes,
+SHA-256 `7e5a8037b384d71371041c7bf1592e3d0b5eb4f6ba4a5f16db13eee558f03be6`.
+The initial touch and small-mod round trip used the same implementation before
+the version increment; the large-pack check used the version-5 APK.
+
 ## 0.4 game acquisition candidate (2026-09-22)
 
 The 0.4 candidate removes PokeWilds game files from the APK. Its first launch

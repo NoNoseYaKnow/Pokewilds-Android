@@ -7,14 +7,15 @@ release or select a game ZIP or extracted game folder that you already have.
 The app copies the game files into its private storage. No companion app or
 separate runtime installation is needed.
 
-The current build targets ARM64 Android 13 and has been exercised on the
-AYANEO Pocket DMG. Support for other devices and Android versions needs
+The current build targets ARM64 Android and has been exercised on the Android 13
+AYANEO Pocket DMG. Touch controls and mod transfer have also been tested on a
+Samsung SM-S901U running Android 16. Broader device compatibility needs
 separate testing. This is still a prototype, not a general Android release.
 
 ## Install and play
 
 Download the signed Android APK from the
-[v0.4.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.4.0),
+[v0.5.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.5.0),
 or see [Build from source](#build-from-source) to build it locally.
 
 On first launch, the app starts downloading the pinned PokeWilds 0.8.11 release
@@ -62,9 +63,10 @@ for transferring existing worlds.
 
 After quitting the game, open **App settings** and choose **Import mods ZIP**
 or **Import mods folder**. The selected files are copied into the game's
-`mods/` folder; a ZIP can contain a top-level `mods/` folder or the mod files
-directly. Files at matching paths replace the installed copies. Use **Export
-mods ZIP** first if you want a backup. Mods are loaded when the game starts
+`mods/` folder; a ZIP can contain a top-level `mods/` folder, a single enclosing
+folder with `mods/` inside, or the mod files directly. Files at matching paths
+replace the installed copies. Use **Export mods ZIP** first if you want a
+backup. Mods are loaded when the game starts
 again. This installs PokeWilds file mods such as sprites and music, not Java
 plugins.
 

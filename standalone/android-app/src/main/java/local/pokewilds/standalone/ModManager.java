@@ -20,7 +20,7 @@ final class ModManager {
     private static final String STAGE = ".mods-import.preparing";
     private static final String PREVIOUS = ".mods.previous";
     private static final long MAX_BYTES = 512L * 1024 * 1024;
-    private static final int MAX_ENTRIES = 10000;
+    private static final int MAX_ENTRIES = 50000;
 
     private ModManager() {}
 
@@ -153,8 +153,7 @@ final class ModManager {
 
     /** Build a complete merged tree, then swap it into place. */
     static void installPrepared(Path incoming, Path game, Path stage) throws IOException {
-        Path source = Files.isDirectory(incoming.resolve("mods"), LinkOption.NOFOLLOW_LINKS)
-            ? incoming.resolve("mods") : incoming;
+        Path source = findModsRoot(incoming);
         Path merged = stage.resolve("merged");
         Files.createDirectories(merged);
         int[] entries = {0}; long[] bytes = {0};
@@ -164,6 +163,22 @@ final class ModManager {
         copyTree(source, merged, entries, bytes, true);
         if (entries[0] == before) throw new IOException("Selected ZIP or folder contains no mod files");
         activate(game, merged);
+    }
+
+    private static Path findModsRoot(Path incoming) throws IOException {
+        Path direct = incoming.resolve("mods");
+        if (Files.isDirectory(direct, LinkOption.NOFOLLOW_LINKS)) return direct;
+        Path nested = null;
+        try (DirectoryStream<Path> children = Files.newDirectoryStream(incoming)) {
+            for (Path child : children) {
+                if (!Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) continue;
+                Path candidate = child.resolve("mods");
+                if (!Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)) continue;
+                if (nested != null) throw new IOException("Mod archive has multiple mods folders; choose one folder");
+                nested = candidate;
+            }
+        }
+        return nested != null ? nested : incoming;
     }
 
     private static void copyTree(Path source, Path target, int[] entries, long[] bytes,

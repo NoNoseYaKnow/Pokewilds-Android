@@ -5,9 +5,11 @@ This app packages the Linux runtime and Android host artifacts for PokeWilds
 the pinned official release or select a copy of those official game files they
 already have; the app installs those files into its private storage. It is a
 working standalone prototype tested on the Pocket DMG running Android 13.
+Touch controls and mod transfer were also tested on a Samsung SM-S901U running
+Android 16.
 
 The signed APK is available from the
-[v0.4.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.4.0).
+[v0.5.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.5.0).
 The build instructions below can produce a local APK.
 
 The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
@@ -226,8 +228,11 @@ Imports preserve existing settings, refuse world-name collisions, merge
 identical/missing mod files, and refuse conflicting mod contents.
 
 For direct mod installation, quit the game and open **App settings**. **Import
-mods ZIP** accepts a ZIP with `mods/` at its root or mod files directly at its
-root; **Import mods folder** selects the folder containing the mod files.
+mods ZIP** accepts a ZIP with `mods/` at its root, one enclosing folder with
+`mods/` inside, or mod files directly at its root; **Import mods folder** selects
+the folder containing the mod files. When a pack has one enclosing folder, the
+main `mods/` folder is imported; optional variants in sibling folders must be
+selected separately.
 These actions merge into the app-private `mods/` directory and replace files
 at matching paths. **Export mods ZIP** saves a copy through Android's document
 picker before making changes. Imports stage and validate files, then swap the

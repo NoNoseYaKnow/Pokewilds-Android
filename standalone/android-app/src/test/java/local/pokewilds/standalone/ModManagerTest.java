@@ -46,6 +46,42 @@ public class ModManagerTest {
         } finally { SafeTar.deleteTree(root); }
     }
 
+    @Test public void wrappedModPackImportsMainModsWithoutOptionalVariants() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-wrapped-test");
+        try {
+            Path game = game(root);
+            byte[] zip = archive(Map.of(
+                "Mod Pack/mods/pokemon/pikachu/front.png", "main sprite",
+                "Mod Pack/!OPTIONAL MINI MODS/variant/mods/pokemon/pikachu/front.png", "optional sprite",
+                "Mod Pack/notes.txt", "instructions"));
+
+            ModManager.importZip(new ByteArrayInputStream(zip), game);
+
+            assertEquals("main sprite", read(game.resolve("mods/pokemon/pikachu/front.png")));
+            assertFalse(Files.exists(game.resolve("mods/Mod Pack")));
+            assertFalse(Files.exists(game.resolve("mods/!OPTIONAL MINI MODS")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void modPackWithMoreThanTenThousandFilesImports() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-large-test");
+        try {
+            Path game = game(root);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            try (ZipOutputStream zip = new ZipOutputStream(output)) {
+                for (int i = 0; i < 10001; i++) {
+                    zip.putNextEntry(new ZipEntry(String.format("Mod Pack/mods/items/item-%05d.txt", i)));
+                    zip.write('x');
+                    zip.closeEntry();
+                }
+            }
+
+            ModManager.importZip(new ByteArrayInputStream(output.toByteArray()), game);
+
+            assertEquals("x", read(game.resolve("mods/items/item-10000.txt")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
     @Test public void unsafeZipLeavesInstalledModsUntouched() throws Exception {
         Path root = Files.createTempDirectory("mod-manager-invalid-test");
         try {
