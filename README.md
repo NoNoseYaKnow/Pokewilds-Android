@@ -54,8 +54,10 @@ covers non-keybinding options in `settings.txt`; changes apply when the next
 game session starts. Stop the game before changing runtime or game settings.
 
 Use **Export saves** after saving and quitting, then choose a destination in
-Android's document picker. **Import saves** accepts compatible PokeWilds 0.8.11
-JSON save archives. Export worlds before uninstalling: uninstalling removes the
+Android's document picker. **Import saves ZIP** accepts an app export ZIP or a
+ZIP containing one PokeWilds 0.8.11 `.sav` world folder. **Import .sav folder**
+accepts the world folder directly, including its JSON ZIP files and PNG. Export
+worlds before uninstalling: uninstalling removes the
 app's private game files and saves. See [save migration](standalone/migration/README.md)
 for transferring existing worlds.
 

@@ -16,6 +16,7 @@ public final class SaveArchive {
     private static final int MANIFEST_SCHEMA = 1;
     private static final String GAME_VERSION = "0.8.11";
     private static final String PREPARING = "save-import.preparing";
+    private static final String FOLDER_ARCHIVE = "save-folder-import.preparing.zip";
     static final String ACTIVATION_JOURNAL = ".activation-journal";
     static final int JOURNAL_MAGIC = 0x504B534A;
     static final int JOURNAL_VERSION = 1;
@@ -23,6 +24,58 @@ public final class SaveArchive {
     private static final int JOURNAL_ENTRY_LIMIT = 100000;
 
     private SaveArchive() {}
+
+    @FunctionalInterface
+    interface InputOpener {
+        InputStream open() throws IOException;
+    }
+
+    /** Imports the direct files of a selected PokeWilds .sav folder. */
+    static void importWorldFiles(String worldName, Map<String, InputOpener> files, Path game) throws IOException {
+        if (!safeName(worldName) || !worldName.endsWith(".sav") || worldName.endsWith(".sav.zip")) {
+            throw new IOException("Choose a PokeWilds .sav world folder");
+        }
+        if (files.isEmpty()) throw new IOException("Selected world folder is empty");
+        Path archive = game.resolveSibling(FOLDER_ARCHIVE);
+        Files.deleteIfExists(archive);
+        try {
+            try (ZipOutputStream zip = new ZipOutputStream(
+                    Files.newOutputStream(archive, StandardOpenOption.CREATE_NEW), StandardCharsets.UTF_8)) {
+                int count = 0;
+                long size = 0;
+                byte[] buffer = new byte[65536];
+                for (Map.Entry<String, InputOpener> file : files.entrySet()) {
+                    String name = file.getKey();
+                    if (!safeName(name) || ++count > 100000) throw new IOException("Invalid world folder file name or count");
+                    zip.putNextEntry(new ZipEntry(worldName + "/" + name));
+                    try (InputStream input = file.getValue().open()) {
+                        if (input == null) throw new IOException("Could not read world file: " + name);
+                        int n;
+                        while ((n = input.read(buffer)) != -1) {
+                            size += n;
+                            if (size > LIMIT) throw new IOException("World folder is too large");
+                            zip.write(buffer, 0, n);
+                        }
+                    }
+                    zip.closeEntry();
+                }
+            }
+            try (InputStream input = Files.newInputStream(archive)) {
+                importFrom(input, game);
+            }
+        } finally {
+            Files.deleteIfExists(archive);
+        }
+    }
+
+    static void discardInterruptedFolderArchive(Path game) throws IOException {
+        Files.deleteIfExists(game.resolveSibling(FOLDER_ARCHIVE));
+    }
+
+    private static boolean safeName(String name) {
+        return name != null && !name.isEmpty() && !name.equals(".") && !name.equals("..")
+            && name.indexOf('/') < 0 && name.indexOf('\\') < 0 && name.indexOf('\0') < 0;
+    }
 
     private static boolean allowed(String name) {
         String top = name.split("/", 2)[0];
@@ -83,6 +136,9 @@ public final class SaveArchive {
                     catch (InvalidPathException error) { throw new IOException("Unsupported save archive path: " + name, error); }
                     Path out = stage.resolve(relative).normalize();
                     if (relative.isAbsolute() || name.contains("\\") || !out.startsWith(stage) || !allowed(name)) {
+                        if ("data.json".equals(name)) {
+                            throw new IOException("Choose the complete .sav folder or its ZIP, not one JSON ZIP file");
+                        }
                         throw new IOException("Unsupported save archive path: " + name);
                     }
                     if (relative.getNameCount() == 0) throw new IOException("Empty save archive path");
@@ -116,7 +172,10 @@ public final class SaveArchive {
                     zip.closeEntry();
                 }
             }
-            if (!manifestSeen) throw new IOException("Save archive manifest is missing");
+            if (!manifestSeen && (tops.size() != 1 || !tops.iterator().next().endsWith(".sav")
+                    || tops.iterator().next().endsWith(".sav.zip"))) {
+                throw new IOException("A ZIP without an app manifest must contain one .sav world folder");
+            }
             if (tops.isEmpty()) throw new IOException("Archive contains no saves or settings");
             for (String top : tops) {
                 if (top.endsWith(".sav") && !top.endsWith(".sav.zip")) validateWorldFolder(stage.resolve(top), top);

@@ -10,6 +10,70 @@ import java.nio.file.*;
 import java.util.zip.*;
 
 public class SaveArchiveTest {
+    @Test public void importsNativeWorldZipWithoutAppManifest() throws Exception {
+        Path root = Files.createTempDirectory("save-test");
+        try {
+            Path game = root.resolve("game");
+            SaveArchive.importFrom(new ByteArrayInputStream(nativeWorldZip()), game);
+            assertTrue(Files.isRegularFile(game.resolve("world.sav/game.json.zip")));
+            assertTrue(Files.isRegularFile(game.resolve("world.sav/map001.json.zip")));
+            assertTrue(Files.isRegularFile(game.resolve("world.sav/spawnplayer001.json.zip")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void importsSelectedWorldFolderFiles() throws Exception {
+        Path root = Files.createTempDirectory("save-test");
+        try {
+            Path game = root.resolve("game");
+            java.util.Map<String, SaveArchive.InputOpener> files = new java.util.LinkedHashMap<>();
+            files.put("game.json.zip", () -> new ByteArrayInputStream(jsonSaveBytes("game")));
+            files.put("map001.json.zip", () -> new ByteArrayInputStream(jsonSaveBytes("map")));
+            files.put("spawnplayer001.json.zip", () -> new ByteArrayInputStream(jsonSaveBytes("spawn")));
+            files.put("map001.png", () -> new ByteArrayInputStream(bytes("image")));
+            SaveArchive.importWorldFiles("world.sav", files, game);
+            assertEquals("image", text(game.resolve("world.sav/map001.png")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void folderImportCollisionKeepsExistingWorldAndRemovesTemporaryZip() throws Exception {
+        Path root = Files.createTempDirectory("save-test");
+        try {
+            Path game = root.resolve("game");
+            createWorld(game.resolve("world.sav"));
+            byte[] oldMap = Files.readAllBytes(game.resolve("world.sav/map001.json.zip"));
+            java.util.Map<String, SaveArchive.InputOpener> files = new java.util.LinkedHashMap<>();
+            files.put("game.json.zip", () -> new ByteArrayInputStream(jsonSaveBytes("other")));
+            files.put("map001.json.zip", () -> new ByteArrayInputStream(jsonSaveBytes("other")));
+            files.put("spawnplayer001.json.zip", () -> new ByteArrayInputStream(jsonSaveBytes("other")));
+            try {
+                SaveArchive.importWorldFiles("world.sav", files, game);
+                fail("world collision");
+            } catch (IOException expected) {
+                assertTrue(expected.getMessage().contains("Already exists"));
+            }
+            assertArrayEquals(oldMap, Files.readAllBytes(game.resolve("world.sav/map001.json.zip")));
+            assertFalse(Files.exists(root.resolve("save-folder-import.preparing.zip")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void rejectsManifestlessArchiveWithMultipleWorlds() throws Exception {
+        Path root = Files.createTempDirectory("save-test");
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
+                putWorld(zip, "first.sav");
+                putWorld(zip, "second.sav");
+            }
+            try {
+                SaveArchive.importFrom(new ByteArrayInputStream(bytes.toByteArray()), root.resolve("game"));
+                fail("multiple worlds");
+            } catch (IOException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("one .sav world folder"));
+            }
+            assertFalse(Files.exists(root.resolve("game/first.sav")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
     @Test public void roundTripPreservesWorldSettingsAndExcludesJar() throws Exception {
         Path root = Files.createTempDirectory("save-test");
         try {
@@ -317,6 +381,21 @@ public class SaveArchiveTest {
             putEntry(zip, "data.json", data);
         }
         return bytes.toByteArray();
+    }
+
+    private static byte[] nativeWorldZip() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
+            putWorld(zip, "world.sav");
+        }
+        return bytes.toByteArray();
+    }
+
+    private static void putWorld(ZipOutputStream zip, String name) throws IOException {
+        putEntry(zip, name + "/", (byte[]) null);
+        putEntry(zip, name + "/game.json.zip", jsonSaveBytes("game"));
+        putEntry(zip, name + "/map001.json.zip", jsonSaveBytes("map"));
+        putEntry(zip, name + "/spawnplayer001.json.zip", jsonSaveBytes("spawn"));
     }
 
     private static void putEntry(ZipOutputStream zip, String name, String data) throws IOException {

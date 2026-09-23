@@ -2,8 +2,11 @@ package local.pokewilds.standalone;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.provider.DocumentsContract;
 import android.widget.Button;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
@@ -12,6 +15,8 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class LauncherActivity extends Activity {
     public static final String MANAGE_SAVES_EXTRA = "local.pokewilds.standalone.MANAGE_SAVES";
@@ -72,6 +77,8 @@ public final class LauncherActivity extends Activity {
             try {
                 GameInstaller.discardInterruptedFiles(getFilesDir().toPath());
                 ModManager.recover(getFilesDir().toPath().resolve("game"));
+                SaveArchive.recoverInterruptedImport(getFilesDir().toPath().resolve("game"));
+                SaveArchive.discardInterruptedFolderArchive(getFilesDir().toPath().resolve("game"));
             } catch (IOException error) {
                 GameAcquisitionService.status = "Could not recover app files: " + error.getMessage();
             }
@@ -96,9 +103,17 @@ public final class LauncherActivity extends Activity {
         cancelAcquisitionButton = new Button(this); cancelAcquisitionButton.setText("Cancel setup");
         cancelAcquisitionButton.setOnClickListener(v -> startAcquisition(GameAcquisitionService.CANCEL, null));
         acquisitionPanel.addView(cancelAcquisitionButton);
-        Button earlyImport = new Button(this); earlyImport.setText("Import saves");
+        TextView earlySavesHeading = new TextView(this); earlySavesHeading.setText("Saves"); earlySavesHeading.setTextSize(20);
+        acquisitionPanel.addView(earlySavesHeading);
+        TextView earlySavesHelp = new TextView(this);
+        earlySavesHelp.setText("You can import a save ZIP or .sav world folder before installing game files. Finish or cancel game setup first.");
+        acquisitionPanel.addView(earlySavesHelp);
+        Button earlyImport = new Button(this); earlyImport.setText("Import saves ZIP");
         earlyImport.setOnClickListener(v -> chooseSaveImport());
         acquisitionPanel.addView(earlyImport);
+        Button earlyFolderImport = new Button(this); earlyFolderImport.setText("Import .sav folder");
+        earlyFolderImport.setOnClickListener(v -> chooseSaveFolder());
+        acquisitionPanel.addView(earlyFolderImport);
         layout.addView(acquisitionPanel);
 
         gamePanel = new LinearLayout(this); gamePanel.setOrientation(LinearLayout.VERTICAL);
@@ -129,15 +144,24 @@ public final class LauncherActivity extends Activity {
             } catch (Exception e) { text = "No startup log yet."; }
             new android.app.AlertDialog.Builder(this).setTitle("Startup log").setMessage(text).setPositiveButton("Close", null).show();
         }); gamePanel.addView(logs);
+        TextView savesHeading = new TextView(this); savesHeading.setText("Saves"); savesHeading.setTextSize(20);
+        gamePanel.addView(savesHeading);
+        TextView savesHelp = new TextView(this);
+        savesHelp.setText("Save and quit the game first. Export a backup, or import a save ZIP or .sav world folder. Imports won't replace existing worlds.");
+        gamePanel.addView(savesHelp);
         Button export = new Button(this); export.setText("Export saves");
         export.setOnClickListener(v -> {
             if (RuntimeService.active) { RuntimeService.status = "Save and quit the game before exporting."; return; }
             startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/zip").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"pokewilds-saves.zip"), 10);
         }); gamePanel.addView(export);
-        Button importButton = new Button(this); importButton.setText("Import saves");
+        Button importButton = new Button(this); importButton.setText("Import saves ZIP");
         importButton.setOnClickListener(v -> chooseSaveImport()); gamePanel.addView(importButton);
+        Button importFolder = new Button(this); importFolder.setText("Import .sav folder");
+        importFolder.setOnClickListener(v -> chooseSaveFolder()); gamePanel.addView(importFolder);
+        TextView modsHeading = new TextView(this); modsHeading.setText("Mods"); modsHeading.setTextSize(20);
+        gamePanel.addView(modsHeading);
         TextView modsHelp = new TextView(this);
-        modsHelp.setText("Mods: quit the game first. Importing adds files under mods/ and replaces files at matching paths. Export mods first if you want a backup.");
+        modsHelp.setText("Quit the game first. Importing adds files under mods/ and replaces files at matching paths. Export mods first if you want a backup.");
         gamePanel.addView(modsHelp);
         Button importModsZip = new Button(this); importModsZip.setText("Import mods ZIP");
         importModsZip.setOnClickListener(v -> chooseModsZip()); gamePanel.addView(importModsZip);
@@ -195,14 +219,32 @@ public final class LauncherActivity extends Activity {
             });
             return;
         }
+        if (request != 10 && request != 11 && request != 17) return;
         if (RuntimeService.active) { setSaveStatus("Quit the game first."); return; }
         setSaveStatus(request == 10 ? "Exporting saves…" : "Importing saves…");
+        Uri selected = data.getData();
+        if (request == 17) {
+            try {
+                getContentResolver().takePersistableUriPermission(selected, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (SecurityException ignored) { /* Provider grants access only for this selection. */ }
+        }
         files.submit(() -> {
             if (!RuntimeService.DATA_LOCK.tryAcquire()) { setSaveStatus("Wait for game setup or quit the game before transferring saves."); return; }
             try {
                 java.nio.file.Path game = new java.io.File(getFilesDir(), "game").toPath();
-                if (request == 10) SaveArchive.exportTo(game,getContentResolver().openOutputStream(data.getData()));
-                else SaveArchive.importFrom(getContentResolver().openInputStream(data.getData()), game);
+                if (request == 10) {
+                    try (java.io.OutputStream output = getContentResolver().openOutputStream(selected)) {
+                        if (output == null) throw new IOException("Could not create save ZIP");
+                        SaveArchive.exportTo(game, output);
+                    }
+                } else if (request == 17) {
+                    importSelectedWorldFolder(selected, game);
+                } else {
+                    try (java.io.InputStream input = getContentResolver().openInputStream(selected)) {
+                        if (input == null) throw new IOException("Could not open save ZIP");
+                        SaveArchive.importFrom(input, game);
+                    }
+                }
                 setSaveStatus(request == 10 ? "Saves exported" : "Saves imported");
             } catch (Exception e) { setSaveStatus("Save transfer failed: " + e.getMessage()); }
             finally { RuntimeService.DATA_LOCK.release(); }
@@ -227,6 +269,45 @@ public final class LauncherActivity extends Activity {
         if (GameAcquisitionService.active) { setSaveStatus("Cancel or finish game setup before importing saves."); return; }
         startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip")
             .addCategory(Intent.CATEGORY_OPENABLE), 11);
+    }
+
+    private void chooseSaveFolder() {
+        if (RuntimeService.active) { setSaveStatus("Quit the game before importing."); return; }
+        if (GameAcquisitionService.active) { setSaveStatus("Cancel or finish game setup before importing saves."); return; }
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 17);
+    }
+
+    private void importSelectedWorldFolder(Uri tree, java.nio.file.Path game) throws IOException {
+        try {
+            String rootId = DocumentsContract.getTreeDocumentId(tree);
+            Uri root = DocumentsContract.buildDocumentUriUsingTree(tree, rootId);
+            String[] rootColumns = {DocumentsContract.Document.COLUMN_DISPLAY_NAME};
+            String worldName;
+            try (Cursor cursor = getContentResolver().query(root, rootColumns, null, null, null)) {
+                if (cursor == null || !cursor.moveToFirst()) throw new IOException("Could not read selected world folder");
+                worldName = cursor.getString(0);
+            }
+            Map<String, SaveArchive.InputOpener> files = new LinkedHashMap<>();
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, rootId);
+            String[] columns = {DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE};
+            try (Cursor cursor = getContentResolver().query(children, columns, null, null, null)) {
+                if (cursor == null) throw new IOException("Could not list selected world folder");
+                while (cursor.moveToNext()) {
+                    String id = cursor.getString(0), name = cursor.getString(1), mime = cursor.getString(2);
+                    if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                        throw new IOException("Select the .sav world folder itself, containing ZIP and PNG files");
+                    }
+                    if (files.containsKey(name)) throw new IOException("Duplicate world file: " + name);
+                    Uri document = DocumentsContract.buildDocumentUriUsingTree(tree, id);
+                    files.put(name, () -> getContentResolver().openInputStream(document));
+                }
+            }
+            SaveArchive.importWorldFiles(worldName, files, game);
+        } catch (SecurityException error) {
+            throw new IOException("World folder access was lost", error);
+        }
     }
 
     private void chooseModsZip() {

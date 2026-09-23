@@ -220,8 +220,11 @@ assume the game autosaves.
 Use **Export saves** after saving and quitting, then choose a location in the
 Android document picker. Uninstalling removes the privately stored game files
 and worlds: export saves first. App-private storage is not shared with other
-apps; selecting a ZIP or folder uses Android's document picker to grant access
-to that source.
+apps. **Import saves ZIP** accepts an app export ZIP or a ZIP containing one
+PokeWilds 0.8.11 `.sav` world folder. **Import .sav folder** accepts that folder
+directly, with its JSON ZIP files and PNG. Select the whole world folder or its
+outer ZIP, not an individual JSON ZIP. Android's document picker grants access
+to the selected source.
 [Migration instructions](migration/README.md) explain copying current 0.8.11
 JSON saves from Termux. Legacy Kryo saves are not supported by this importer.
 Imports preserve existing settings, refuse world-name collisions, merge
