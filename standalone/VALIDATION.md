@@ -1,5 +1,33 @@
 # Standalone prototype validation
 
+## 0.7 controller menu, settings shortcut, and adaptive icon (2026-09-23)
+
+The game guest no longer sees raw `/dev/input` controller devices; Android
+delivers controller buttons to the X11 surface while the game is active. The
+original Android Back dialog captures D-pad input while open. On the Pocket
+DMG, the user confirmed that the physical D-pad moves the character in game,
+does not move it behind the Back menu, and that A, B, Start, and R3 still work.
+The user also confirmed that A selects Back-menu items and the menu retains
+its original appearance.
+
+On a Samsung SM-S901U, version 0.6 of the changed implementation was installed
+over version 0.5 with app data retained. After backgrounding the running game,
+the user confirmed that the app-icon **App settings** shortcut opens the initial
+menu without restarting the game and displays **PokeWilds game settings**.
+Version 0.7 differs from this device-tested implementation only in release
+metadata and removal of a temporary input diagnostic probe.
+
+The app and shortcut now use an adaptive icon with foreground, background, and
+monochrome layers. The reported launcher that displayed a small square was
+not available for visual retesting; see [icon research](ICON_RESEARCH.md).
+The Android JVM tests and signed release build passed. The static APK verifier
+reported no errors or warnings, verified the signature and runtime payload
+hash, and confirmed that no PokeWilds game files are bundled.
+
+Version code 7, version name 0.7: `PokeWilds-Android-0.7-arm64.apk` is
+207,149,204 bytes, SHA-256
+`9dff690134818fcd86c0af326f843d5a12fc8a070cc738c752e932590819e949`.
+
 ## 0.6 save import and App settings shortcut (2026-09-23)
 
 The importer accepts an app export ZIP, a native ZIP containing one `.sav`

@@ -79,6 +79,7 @@ public final class RuntimeService extends Service {
             }
             SafeTar.deleteTree(tmp.toPath());
             if (!tmp.mkdirs()) throw new IOException("Cannot prepare session sockets");
+            if (!new File(tmp, "hidden-input").mkdir()) throw new IOException("Cannot isolate game input devices");
             status = "Starting display…";
             Process x11 = start(Arrays.asList("/system/bin/app_process", "/", "com.termux.x11.CmdEntryPoint", ":0", "-ac", "-nolisten", "tcp"));
             waitForSocket(new File(tmp, ".X11-unix/X0"), x11);
@@ -181,7 +182,10 @@ public final class RuntimeService extends Service {
         Process p = b.start(); processes.add(p); return p;
     }
     private List<String> guest(List<String> command) {
-        List<String> args = new ArrayList<>(Arrays.asList(new File(nativeDir, "libproot.so").toString(), "--kill-on-exit", "-0", "-r", new File(runtime, "rootfs").toString(), "-b", "/dev", "-b", "/proc", "-b", "/sys", "-b", tmp + ":/tmp", "-b", new File(getFilesDir(), "game") + ":/game", "-w", "/game", "/usr/bin/env", "-i", "HOME=/root", "PATH=/usr/local/bin:/usr/bin:/bin", "TMPDIR=/tmp", "DISPLAY=:0", "XDG_RUNTIME_DIR=/tmp", "PULSE_SERVER=unix:/tmp/pulse-native", "ALSOFT_DRIVERS=pulse", "ALSOFT_LOGLEVEL=" + (BuildConfig.DEBUG ? "3" : "1"), "GALLIUM_DRIVER=" + (options.graphics.equals("software") ? "llvmpipe" : "virpipe"), "__GLX_VENDOR_LIBRARY_NAME=mesa", "MESA_GL_VERSION_OVERRIDE=3.3", "LANG=C.UTF-8"));
+        // Hide raw controller devices from the guest. Android translates gamepad
+        // input into X11 keys only while the game has focus, so a modal menu
+        // cannot also move the character behind it.
+        List<String> args = new ArrayList<>(Arrays.asList(new File(nativeDir, "libproot.so").toString(), "--kill-on-exit", "-0", "-r", new File(runtime, "rootfs").toString(), "-b", "/dev", "-b", new File(tmp, "hidden-input") + ":/dev/input", "-b", "/proc", "-b", "/sys", "-b", tmp + ":/tmp", "-b", new File(getFilesDir(), "game") + ":/game", "-w", "/game", "/usr/bin/env", "-i", "HOME=/root", "PATH=/usr/local/bin:/usr/bin:/bin", "TMPDIR=/tmp", "DISPLAY=:0", "XDG_RUNTIME_DIR=/tmp", "PULSE_SERVER=unix:/tmp/pulse-native", "ALSOFT_DRIVERS=pulse", "ALSOFT_LOGLEVEL=" + (BuildConfig.DEBUG ? "3" : "1"), "GALLIUM_DRIVER=" + (options.graphics.equals("software") ? "llvmpipe" : "virpipe"), "__GLX_VENDOR_LIBRARY_NAME=mesa", "MESA_GL_VERSION_OVERRIDE=3.3", "LANG=C.UTF-8"));
         args.addAll(command); return args;
     }
     private void waitForSocket(File socket, Process owner) throws Exception {

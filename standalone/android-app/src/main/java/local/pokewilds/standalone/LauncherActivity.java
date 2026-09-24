@@ -25,6 +25,7 @@ public final class LauncherActivity extends Activity {
     private TextView statusView;
     private LinearLayout acquisitionPanel;
     private LinearLayout gamePanel;
+    private LinearLayout managementPanel;
     private Button downloadButton;
     private Button localZipButton;
     private Button localFolderButton;
@@ -123,12 +124,14 @@ public final class LauncherActivity extends Activity {
         forceStop.setOnClickListener(v -> confirmForceStop()); gamePanel.addView(forceStop);
         Button quit = new Button(this); quit.setText("Quit game");
         quit.setOnClickListener(v -> openGameForQuit()); gamePanel.addView(quit);
-        if (managementMode) {
-            addRuntimeControls(gamePanel);
-            Button gameSettings = new Button(this); gameSettings.setText("PokeWilds game settings");
-            gameSettings.setOnClickListener(v -> startActivity(new Intent(this, GameSettingsActivity.class)));
-            gamePanel.addView(gameSettings);
-        }
+        managementPanel = new LinearLayout(this);
+        managementPanel.setOrientation(LinearLayout.VERTICAL);
+        addRuntimeControls(managementPanel);
+        Button gameSettings = new Button(this); gameSettings.setText("PokeWilds game settings");
+        gameSettings.setOnClickListener(v -> startActivity(new Intent(this, GameSettingsActivity.class)));
+        managementPanel.addView(gameSettings);
+        managementPanel.setVisibility(managementMode ? android.view.View.VISIBLE : android.view.View.GONE);
+        gamePanel.addView(managementPanel);
         Button logs = new Button(this); logs.setText("View startup log");
         logs.setOnClickListener(v -> {
             String text;
@@ -476,12 +479,8 @@ public final class LauncherActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent); setIntent(intent);
-        boolean nextManagementMode = isManagementIntent(intent);
-        if (managementMode != nextManagementMode) {
-            recreate();
-            return;
-        }
-        managementMode = nextManagementMode;
+        managementMode = isManagementIntent(intent);
+        managementPanel.setVisibility(managementMode ? android.view.View.VISIBLE : android.view.View.GONE);
         manuallyStarted = false;
         openedGame = false;
         gameStartRequested = false;

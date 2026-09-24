@@ -3,7 +3,7 @@
     <shortcut
         android:shortcutId="manage_saves"
         android:enabled="true"
-        android:icon="@drawable/ic_pokewilds"
+        android:icon="@mipmap/ic_pokewilds"
         android:shortcutShortLabel="@string/manage_saves_short"
         android:shortcutLongLabel="@string/manage_saves_long">
         <!-- Shortcut targets must be literal package names; resource IDs are not resolved here. -->

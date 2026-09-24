@@ -15,7 +15,7 @@ separate testing. This is still a prototype, not a general Android release.
 ## Install and play
 
 Download the signed Android APK from the
-[v0.6.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.6.0),
+[v0.7.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.7.0),
 or see [Build from source](#build-from-source) to build it locally.
 
 On first launch, the app starts downloading the pinned PokeWilds 0.8.11 release
@@ -46,6 +46,8 @@ their **Keyboard** control also opens it. Android Back opens a Game menu with
 Press Android Back and choose **Quit PokeWilds**. If the game asks whether to
 save, use Left/Right to focus **Yes** or **No**, then press A. You can also tap
 the choice. Android Home leaves the session running; it does not save the game.
+The Android Back menu captures controller input while it is open, so navigating
+it does not move the character in the background.
 
 Long-press the app icon and choose **App settings**, or open it from the Game
 menu. This screen includes graphics and viewport choices, on-screen controls,

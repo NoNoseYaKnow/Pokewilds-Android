@@ -7,6 +7,7 @@ import android.view.WindowManager;
 /** The upstream display/input implementation, hosted inside our application. */
 public final class GameActivity extends com.termux.x11.MainActivity {
     private TouchControls touchControls;
+    private android.app.AlertDialog gameMenu;
     private GameKeyBindings keyBindings = GameKeyBindings.defaults();
     private int keyboardShortcut;
     private boolean rightTriggerHeld;
@@ -62,14 +63,30 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         rightTriggerKeyHeld = false;
         rightTriggerAxisHeld = false;
         rightTriggerKeySeen = false;
-        for (int i=0;i<directions.length;i++) if(directions[i]) { directions[i]=false; super.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,directionKeys[i])); }
+        releaseGamepadKeys();
         super.onPause();
+    }
+    private void releaseDirections() {
+        for (int i=0;i<directions.length;i++) if(directions[i]) {
+            directions[i]=false;
+            super.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,directionKeys[i]));
+        }
+    }
+    private void releaseGamepadKeys() {
+        releaseDirections();
+        // Physical D-pad keys can have reached X11 without passing through the
+        // analog direction tracker. The dialog receives their eventual key-up.
+        for (int key : directionKeys) sendXKey(key, false);
+        for (int key : new int[]{keyBindings.a, keyBindings.b, keyBindings.start,
+            keyBindings.shoulderLeft, keyBindings.shoulderRight}) sendXKey(key, false);
     }
     @Override protected void onCreate(Bundle state) {
         // Taps must click at the touched screen position so the unchanged
         // Swing save/quit dialog remains usable without a visible X cursor.
         ((com.termux.x11.LorieApp) getApplication()).getPrefs(this).touchMode.put("2");
         super.onCreate(state);
+        if (getLorieView() != null)
+            getLorieView().setOnKeyListener((view, code, event) -> handleKey(event));
         android.view.View exit = findViewById(com.termux.x11.R.id.exit_button);
         if (exit != null) exit.setOnClickListener(v -> onBackPressed());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -85,6 +102,7 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         if (getLorieView() != null) getLorieView().toggleKeyboardVisible();
     }
     private boolean dispatchTouchKey(int keyCode, int action) {
+        if (gameMenu != null) return true;
         if (handleSaveDialogKey(keyCode, action, 0)) return true;
         return sendXKey(keyCode, action == android.view.KeyEvent.ACTION_DOWN);
     }
@@ -113,12 +131,33 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         return false;
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (gameMenu != null) {
+            if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_UP) gameMenu.dismiss();
+                return true;
+            }
+            return gameMenu.dispatchKeyEvent(event);
+        }
         // Lorie normally consumes Back to toggle its soft keyboard. Own it here
         // so the handheld's Back button always reaches the game's quit flow.
         if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
             if (event.getAction() == android.view.KeyEvent.ACTION_UP) onBackPressed();
             return true;
         }
+        if (handleKeyboardShortcut(event)) return true;
+        if (handleSaveDialogKey(event.getKeyCode(), event.getAction(), event.getRepeatCount())) return true;
+        if (sendGamepadButton(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+    @Override public boolean handleKey(android.view.KeyEvent event) {
+        // LorieView forwards some physical buttons before Activity.dispatchKeyEvent.
+        if (gameMenu != null) return true;
+        if (handleKeyboardShortcut(event)) return true;
+        if (handleSaveDialogKey(event.getKeyCode(), event.getAction(), event.getRepeatCount())) return true;
+        if (sendGamepadButton(event)) return true;
+        return super.handleKey(event);
+    }
+    private boolean handleKeyboardShortcut(android.view.KeyEvent event) {
         if (KeyboardShortcut.matchesKey(keyboardShortcut, event.getKeyCode())) {
             if (keyboardShortcut == KeyboardShortcut.RIGHT_TRIGGER) {
                 rightTriggerKeySeen = true;
@@ -129,14 +168,16 @@ public final class GameActivity extends com.termux.x11.MainActivity {
             } else if (event.getAction() == android.view.KeyEvent.ACTION_UP && !event.isCanceled()) toggleKeyboard();
             return true;
         }
-        if (handleSaveDialogKey(event.getKeyCode(), event.getAction(), event.getRepeatCount())) return true;
+        return false;
+    }
+    private boolean sendGamepadButton(android.view.KeyEvent event) {
         int mapped = mapButton(event.getKeyCode());
-        if (mapped != event.getKeyCode()) {
-            android.view.KeyEvent key = new android.view.KeyEvent(event.getDownTime(), event.getEventTime(), event.getAction(), mapped,
-                event.getRepeatCount(), 0, event.getDeviceId(), 0, event.getFlags(), android.view.InputDevice.SOURCE_KEYBOARD);
-            return super.dispatchKeyEvent(key);
-        }
-        return super.dispatchKeyEvent(event);
+        if (mapped == event.getKeyCode()) return false;
+        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+            sendXKey(mapped, true);
+        else if (event.getAction() == android.view.KeyEvent.ACTION_UP)
+            sendXKey(mapped, false);
+        return true;
     }
     private int mapButton(int key) {
         switch (key) {
@@ -145,6 +186,8 @@ public final class GameActivity extends com.termux.x11.MainActivity {
             case android.view.KeyEvent.KEYCODE_BUTTON_START: return keyBindings.start;
             case android.view.KeyEvent.KEYCODE_BUTTON_L1: return keyBindings.shoulderLeft;
             case android.view.KeyEvent.KEYCODE_BUTTON_R1: return keyBindings.shoulderRight;
+            case android.view.KeyEvent.KEYCODE_BUTTON_X: return keyBindings.shoulderLeft;
+            case android.view.KeyEvent.KEYCODE_BUTTON_Y: return keyBindings.shoulderRight;
             default: return key;
         }
     }
@@ -158,6 +201,7 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN};
     @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
         if (touchControls != null) touchControls.refreshControllerState();
+        if (gameMenu != null) return true;
         if ((event.getSource() & android.view.InputDevice.SOURCE_JOYSTICK) != 0 && event.getAction() == android.view.MotionEvent.ACTION_MOVE) {
             if (keyboardShortcut == KeyboardShortcut.RIGHT_TRIGGER && !rightTriggerKeySeen) {
                 float trigger = Math.max(event.getAxisValue(android.view.MotionEvent.AXIS_RTRIGGER),
@@ -170,7 +214,9 @@ public final class GameActivity extends com.termux.x11.MainActivity {
             if (x == 0) x=event.getAxisValue(android.view.MotionEvent.AXIS_X);
             if (y == 0) y=event.getAxisValue(android.view.MotionEvent.AXIS_Y);
             boolean[] next={x < -.3f, x > .3f, y < -.3f, y > .3f};
-            for(int i=0;i<4;i++) if(next[i]!=directions[i]) { directions[i]=next[i]; dispatchKeyEvent(new android.view.KeyEvent(next[i] ? android.view.KeyEvent.ACTION_DOWN : android.view.KeyEvent.ACTION_UP,directionKeys[i])); }
+            for(int i=0;i<4;i++) if(next[i]!=directions[i]) {
+                directions[i]=next[i]; dispatchKeyEvent(new android.view.KeyEvent(next[i] ? android.view.KeyEvent.ACTION_DOWN : android.view.KeyEvent.ACTION_UP,directionKeys[i]));
+            }
             return true;
         }
         return super.onGenericMotionEvent(event);
@@ -178,14 +224,19 @@ public final class GameActivity extends com.termux.x11.MainActivity {
     // The upstream super implementation toggles its keyboard; this host owns Quit.
     @android.annotation.SuppressLint("MissingSuperCall")
     @Override public void onBackPressed() {
+        if (gameMenu != null) { gameMenu.dismiss(); return; }
         if (getLorieView() != null) getLorieView().setKeyboardVisible(false);
-        new android.app.AlertDialog.Builder(this).setTitle("Game menu")
+        if (touchControls != null) touchControls.releaseAll();
+        releaseGamepadKeys();
+        gameMenu = new android.app.AlertDialog.Builder(this).setTitle("Game menu")
             .setItems(new String[]{"Keep playing", "Show keyboard", "App settings", "Quit PokeWilds"}, (d, which) -> {
                 if (which == 1 && getLorieView() != null) getLorieView().post(this::toggleKeyboard);
                 else if (which == 2) startActivity(new Intent(this, LauncherActivity.class)
                     .putExtra(LauncherActivity.MANAGE_SAVES_EXTRA, true));
                 else if (which == 3) startService(new Intent(this, RuntimeService.class).setAction(RuntimeService.QUIT));
-            }).show();
+            }).create();
+        gameMenu.setOnDismissListener(d -> gameMenu = null);
+        gameMenu.show();
     }
     private void confirmForceStop() {
         new android.app.AlertDialog.Builder(this).setTitle("Force-stop recovery?")
