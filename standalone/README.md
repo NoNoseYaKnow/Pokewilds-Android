@@ -9,7 +9,7 @@ Touch controls and mod transfer were also tested on a Samsung SM-S901U running
 Android 16.
 
 The signed APK is available from the
-[v0.7.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.7.0).
+[v0.8.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.8.0).
 The build instructions below can produce a local APK.
 
 The Android 13 ARM64 emulator runs the unchanged game with an embedded X11
@@ -241,6 +241,12 @@ at matching paths. **Export mods ZIP** saves a copy through Android's document
 picker before making changes. Imports stage and validate files, then swap the
 merged directory into place; an interrupted swap is recovered on next launch.
 PokeWilds loads the changes on its next start.
+To remove files, choose **Browse / remove installed mods** in App settings,
+open the `mods/` subfolders, select individual files or whole folders, and
+confirm. Imports are merged, so one folder can contain files from several
+imports. The removal stages a copy of the remaining tree and activates it with
+the same interrupted-swap recovery used by imports. Export a backup first if
+you may want to restore deleted files.
 
 ## Prototype boundary
 

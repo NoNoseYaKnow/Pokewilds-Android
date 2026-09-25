@@ -10,7 +10,10 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -23,6 +26,20 @@ final class ModManager {
     private static final int MAX_ENTRIES = 50000;
 
     private ModManager() {}
+
+    static final class Entry {
+        final String name;
+        final boolean directory;
+        final boolean link;
+        final long size;
+
+        Entry(String name, BasicFileAttributes attributes) {
+            this.name = name;
+            directory = attributes.isDirectory();
+            link = attributes.isSymbolicLink();
+            size = attributes.isRegularFile() ? attributes.size() : 0;
+        }
+    }
 
     /** Call while holding RuntimeService.DATA_LOCK before using the mods directory. */
     static void recover(Path game) throws IOException {
@@ -80,6 +97,68 @@ final class ModManager {
                     return FileVisitResult.CONTINUE;
                 }
             });
+        }
+    }
+
+    /** Browse one directory inside mods; callers hold RuntimeService.DATA_LOCK. */
+    static List<Entry> list(Path game, Path relativeDirectory) throws IOException {
+        recover(game);
+        validateRelativeDirectory(relativeDirectory);
+        Path mods = game.resolve("mods");
+        if (!Files.exists(mods, LinkOption.NOFOLLOW_LINKS)) return new ArrayList<>();
+        Path directory = modsDirectory(mods, relativeDirectory);
+        List<Entry> entries = new ArrayList<>();
+        try (DirectoryStream<Path> children = Files.newDirectoryStream(directory)) {
+            for (Path child : children)
+                entries.add(new Entry(child.getFileName().toString(),
+                    Files.readAttributes(child, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS)));
+        }
+        entries.sort(Comparator.comparing((Entry entry) -> !entry.directory)
+            .thenComparing(entry -> entry.name, String.CASE_INSENSITIVE_ORDER));
+        return entries;
+    }
+
+    /** Remove selected immediate children with the import swap's recovery guarantees; callers hold DATA_LOCK. */
+    static void removeSelected(Path game, Path relativeDirectory, List<String> names) throws IOException {
+        recover(game);
+        Path mods = game.resolve("mods");
+        modsDirectory(mods, relativeDirectory);
+        if (names.isEmpty()) throw new IOException("Select at least one mod file or folder");
+        Set<Path> skipped = new HashSet<>();
+        for (String name : names) {
+            if (!safeName(name)) throw new IOException("Invalid mod file name");
+            Path relative = relativeDirectory.resolve(name);
+            if (!Files.exists(mods.resolve(relative), LinkOption.NOFOLLOW_LINKS))
+                throw new IOException("Mod file no longer exists: " + name);
+            skipped.add(relative);
+        }
+        Path stage = game.resolve(STAGE), merged = stage.resolve("merged");
+        try {
+            Files.createDirectories(stage);
+            int[] entries = {0}; long[] bytes = {0};
+            copyTree(mods, merged, entries, bytes, false, skipped);
+            activate(game, merged);
+        } finally { SafeTar.deleteTree(stage); }
+    }
+
+    private static Path modsDirectory(Path mods, Path relative) throws IOException {
+        validateRelativeDirectory(relative);
+        Path directory = mods;
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(directory))
+            throw new IOException("No safe mods folder to browse");
+        if (!relative.toString().isEmpty()) for (Path part : relative) {
+            directory = directory.resolve(part);
+            if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(directory))
+                throw new IOException("Mod folder is unavailable");
+        }
+        return directory;
+    }
+
+    private static void validateRelativeDirectory(Path relative) throws IOException {
+        if (relative.isAbsolute() || !relative.normalize().equals(relative))
+            throw new IOException("Invalid mods folder path");
+        if (!relative.toString().isEmpty()) for (Path part : relative) {
+            if (!safeName(part.toString())) throw new IOException("Invalid mods folder path");
         }
     }
 
@@ -183,15 +262,22 @@ final class ModManager {
 
     private static void copyTree(Path source, Path target, int[] entries, long[] bytes,
                                  boolean replace) throws IOException {
+        copyTree(source, target, entries, bytes, replace, java.util.Collections.emptySet());
+    }
+
+    private static void copyTree(Path source, Path target, int[] entries, long[] bytes,
+                                 boolean replace, Set<Path> skipped) throws IOException {
         if (Files.isSymbolicLink(source) || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Mods source is not a folder");
         Files.walkFileTree(source, new SimpleFileVisitor<Path>() {
             @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (skipped.contains(source.relativize(dir))) return FileVisitResult.SKIP_SUBTREE;
                 if (Files.isSymbolicLink(dir)) throw new IOException("Mods folder contains a link");
                 Files.createDirectories(target.resolve(source.relativize(dir)));
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (skipped.contains(source.relativize(file))) return FileVisitResult.CONTINUE;
                 if (!attrs.isRegularFile() || Files.isSymbolicLink(file)) throw new IOException("Mods folder contains an unsupported file");
                 if (file.getFileName().toString().equals("pokewilds.jar")) throw new IOException("Choose mod files, not a game archive");
                 checkLimit(entries, bytes, Files.size(file));

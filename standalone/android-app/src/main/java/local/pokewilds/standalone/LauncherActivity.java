@@ -164,7 +164,7 @@ public final class LauncherActivity extends Activity {
         TextView modsHeading = new TextView(this); modsHeading.setText("Mods"); modsHeading.setTextSize(20);
         gamePanel.addView(modsHeading);
         TextView modsHelp = new TextView(this);
-        modsHelp.setText("Quit the game first. Importing adds files under mods/ and replaces files at matching paths. Export mods first if you want a backup.");
+        modsHelp.setText("Quit the game first. Importing adds files under mods/ and replaces files at matching paths. Browse installed files to remove selected files or folders. Export mods first if you want a backup.");
         gamePanel.addView(modsHelp);
         Button importModsZip = new Button(this); importModsZip.setText("Import mods ZIP");
         importModsZip.setOnClickListener(v -> chooseModsZip()); gamePanel.addView(importModsZip);
@@ -172,6 +172,14 @@ public final class LauncherActivity extends Activity {
         importModsFolder.setOnClickListener(v -> chooseModsFolder()); gamePanel.addView(importModsFolder);
         Button exportMods = new Button(this); exportMods.setText("Export mods ZIP");
         exportMods.setOnClickListener(v -> chooseModsExport()); gamePanel.addView(exportMods);
+        Button browseMods = new Button(this); browseMods.setText("Browse / remove installed mods");
+        browseMods.setOnClickListener(v -> {
+            if (RuntimeService.active || GameAcquisitionService.active) {
+                setSaveStatus("Quit the game and finish setup before managing mods.");
+                return;
+            }
+            startActivity(new Intent(this, ModBrowserActivity.class));
+        }); gamePanel.addView(browseMods);
         layout.addView(gamePanel);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(layout); setContentView(scroll);

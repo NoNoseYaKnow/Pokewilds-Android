@@ -1,5 +1,26 @@
 # Standalone prototype validation
 
+## 0.8 selective mod file removal (2026-09-24)
+
+App settings now opens an in-app browser for the private `mods/` tree. Users
+can open folders, select individual files or whole folders, and confirm their
+removal after quitting the game. A staged copy of the remaining tree is swapped
+into place using the existing interrupted-swap recovery path. Unit tests cover
+listing, selected file and folder removal, preservation of siblings, path
+traversal rejection, symlink handling, empty mods, and interrupted recovery.
+
+The signed test APK was installed over the existing app on the Pocket DMG
+without clearing app data. A harmless one-file ZIP was placed in Downloads;
+the user imported it, found its file in the new browser, removed that selected
+file, and confirmed the flow worked. The temporary ZIP was then removed from
+Downloads. The full Android JVM suite and release build passed. The static APK
+verifier reported no errors or warnings, verified the signature and runtime
+payload hash, and confirmed that no PokeWilds game files are bundled.
+
+Version code 8, version name 0.8: `PokeWilds-Android-0.8-arm64.apk` is
+207,153,620 bytes, SHA-256
+`cf5dccf9d5490e7d104b613ed3e74793c28179faa6bf2e8ac035d125aaa50ca8`.
+
 ## 0.7 controller menu, settings shortcut, and adaptive icon (2026-09-23)
 
 The game guest no longer sees raw `/dev/input` controller devices; Android

@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -144,6 +145,116 @@ public class ModManagerTest {
                 assertEquals("sprite", new String(zip.readAllBytes(), StandardCharsets.UTF_8));
                 assertNull(zip.getNextEntry());
             }
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void browseAndRemoveOneFilePreservesOtherMods() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-remove-file-test");
+        try {
+            Path game = game(root);
+            write(game.resolve("mods/pokemon/pikachu/front.png"), "sprite");
+            write(game.resolve("mods/pokemon/pikachu/back.png"), "back sprite");
+            write(game.resolve("mods/music/wild.ogg"), "music");
+
+            List<ModManager.Entry> top = ModManager.list(game, Paths.get(""));
+            assertEquals(2, top.size());
+            assertTrue(top.stream().allMatch(entry -> entry.directory));
+            List<ModManager.Entry> sprites = ModManager.list(game, Paths.get("pokemon/pikachu"));
+            assertEquals(2, sprites.size());
+            assertEquals("back.png", sprites.get(0).name);
+            assertEquals("front.png", sprites.get(1).name);
+
+            ModManager.removeSelected(game, Paths.get("pokemon/pikachu"), List.of("front.png"));
+
+            assertFalse(Files.exists(game.resolve("mods/pokemon/pikachu/front.png")));
+            assertEquals("back sprite", read(game.resolve("mods/pokemon/pikachu/back.png")));
+            assertEquals("music", read(game.resolve("mods/music/wild.ogg")));
+            assertFalse(Files.exists(game.resolve(".mods-import.preparing")));
+            assertFalse(Files.exists(game.resolve(".mods.previous")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void removingOneFolderPreservesItsSibling() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-remove-folder-test");
+        try {
+            Path game = game(root);
+            write(game.resolve("mods/pokemon/pikachu/front.png"), "sprite");
+            write(game.resolve("mods/music/wild.ogg"), "music");
+
+            ModManager.removeSelected(game, Paths.get(""), List.of("pokemon"));
+
+            assertFalse(Files.exists(game.resolve("mods/pokemon")));
+            assertEquals("music", read(game.resolve("mods/music/wild.ogg")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void invalidRemovalCannotEscapeModsOrChangeFiles() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-remove-invalid-test");
+        try {
+            Path game = game(root);
+            write(game.resolve("mods/keep.txt"), "keep");
+            write(game.resolve("save.txt"), "save");
+            for (Path directory : List.of(Paths.get(".."), Paths.get("missing"))) {
+                try {
+                    ModManager.removeSelected(game, directory, List.of("save.txt"));
+                    fail("Accepted an invalid mods directory");
+                } catch (IOException expected) { /* Existing files remain intact. */ }
+            }
+            try {
+                ModManager.removeSelected(game, Paths.get(""), List.of("../save.txt"));
+                fail("Accepted an escaping file name");
+            } catch (IOException expected) { /* Existing files remain intact. */ }
+            assertEquals("keep", read(game.resolve("mods/keep.txt")));
+            assertEquals("save", read(game.resolve("save.txt")));
+            assertFalse(Files.exists(game.resolve(".mods.previous")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void removingLinkDoesNotFollowItsTarget() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-remove-link-test");
+        try {
+            Path game = game(root);
+            write(game.resolve("save.txt"), "outside");
+            Files.createDirectories(game.resolve("mods"));
+            Files.createSymbolicLink(game.resolve("mods/link"), game.resolve("save.txt"));
+            write(game.resolve("mods/keep.txt"), "keep");
+
+            ModManager.removeSelected(game, Paths.get(""), List.of("link"));
+
+            assertFalse(Files.exists(game.resolve("mods/link"), LinkOption.NOFOLLOW_LINKS));
+            assertEquals("outside", read(game.resolve("save.txt")));
+            assertEquals("keep", read(game.resolve("mods/keep.txt")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void removalRecoversInterruptedPriorSwap() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-remove-recover-test");
+        try {
+            Path game = game(root);
+            write(game.resolve(".mods.previous/remove.txt"), "old");
+            write(game.resolve(".mods.previous/keep.txt"), "keep");
+
+            ModManager.removeSelected(game, Paths.get(""), List.of("remove.txt"));
+
+            assertFalse(Files.exists(game.resolve("mods/remove.txt")));
+            assertEquals("keep", read(game.resolve("mods/keep.txt")));
+            assertFalse(Files.exists(game.resolve(".mods.previous")));
+        } finally { SafeTar.deleteTree(root); }
+    }
+
+    @Test public void emptyModsListIsSafeButRemovalRequiresExistingFolder() throws Exception {
+        Path root = Files.createTempDirectory("mod-manager-remove-empty-test");
+        try {
+            Path game = game(root);
+            assertTrue(ModManager.list(game, Paths.get("")).isEmpty());
+            try {
+                ModManager.list(game, Paths.get(".."));
+                fail("Accepted an escaping browse path");
+            } catch (IOException expected) { /* Paths outside mods are rejected. */ }
+            try {
+                ModManager.removeSelected(game, Paths.get(""), List.of("missing.txt"));
+                fail("Accepted a removal without mods");
+            } catch (IOException expected) { /* Nothing to remove. */ }
         } finally { SafeTar.deleteTree(root); }
     }
 
