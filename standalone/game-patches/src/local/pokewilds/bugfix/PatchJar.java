@@ -37,35 +37,37 @@ import local.pokewilds.bugfix.asm.Opcodes;
 public final class PatchJar {
     private PatchJar() {}
 
-    /** Fingerprint of the four patches applied to the official 0.8.11 jar (independent of how the jar is compressed). */
+    /** Fingerprint of all patches applied to the official 0.8.11 jar (independent of jar compression). */
     // The local lossless floor-save extension intentionally differs from the upstream v1.0 bytes.
     static final String REFERENCE_FINGERPRINT = "TBD";
 
     public static void main(String[] args) throws Exception {
-        boolean sprites = true, hooh = true, floors = true, eggs = true, restore = false;
+        boolean sprites = true, hooh = true, floors = true, eggs = true, prompts = false, restore = false;
         List<String> files = new ArrayList<String>();
         for (String a : args) {
             if (a.equals("--no-sprites")) sprites = false;
             else if (a.equals("--no-hooh")) hooh = false;
             else if (a.equals("--no-floors")) floors = false;
             else if (a.equals("--no-eggs")) eggs = false;
+            else if (a.equals("--prompts")) prompts = true;
+            else if (a.equals("--no-prompts")) prompts = false;
             else if (a.equals("--restore")) restore = true;
             else files.add(a);
         }
         String usage = "Usage:\n  java -jar bugfix.jar <pokewilds.jar>              patch in place (the original is kept as a backup)\n"
                 + "  java -jar bugfix.jar <in.jar> <out.jar>           write a patched copy, leave the input alone\n"
                 + "  java -jar bugfix.jar --restore <pokewilds.jar>    put the original back\n"
-                + "Options: --no-sprites --no-hooh --no-floors --no-eggs";
+                + "Options: --no-sprites --no-hooh --no-floors --no-eggs --prompts --no-prompts";
         try {
             if (restore) {
                 if (files.size() != 1) { System.err.println(usage); System.exit(1); }
                 restore(new File(files.get(0)));
             } else if (files.size() == 1) {
-                patchInPlace(new File(files.get(0)), sprites, hooh, floors, eggs);
+                patchInPlace(new File(files.get(0)), sprites, hooh, floors, eggs, prompts);
             } else if (files.size() == 2) {
                 File in = new File(files.get(0)), out = new File(files.get(1));
                 if (in.getCanonicalFile().equals(out.getCanonicalFile())) fail("input and output must be different files (to patch in place, give only one file)");
-                patch(in, out, sprites, hooh, floors, eggs);
+                patch(in, out, sprites, hooh, floors, eggs, prompts);
             } else {
                 System.err.println(usage);
                 System.exit(1);
@@ -87,7 +89,7 @@ public final class PatchJar {
         try (ZipFile z = new ZipFile(jar)) { return z.getEntry("META-INF/BUGFIX.txt") != null; }
     }
 
-    static void patchInPlace(File jar, boolean sprites, boolean hooh, boolean floors, boolean eggs) throws Exception {
+    static void patchInPlace(File jar, boolean sprites, boolean hooh, boolean floors, boolean eggs, boolean prompts) throws Exception {
         if (!jar.isFile()) throw new PatchException("file not found: " + jar);
         File backup = backupOf(jar);
         if (isPatched(jar)) {
@@ -96,7 +98,7 @@ public final class PatchJar {
         }
         File tmp = new File(jar.getAbsolutePath() + ".bugfix-tmp");
         try {
-            patch(jar, tmp, sprites, hooh, floors, eggs);
+            patch(jar, tmp, sprites, hooh, floors, eggs, prompts);
             if (backup.exists()) {
                 // An earlier backup is only reused if it is the very same jar, so nothing is ever overwritten.
                 if (!sha256(backup).equals(sha256(jar)))
@@ -136,7 +138,7 @@ public final class PatchJar {
     static final class PatchException extends Exception { PatchException(String m) { super(m); } }
     private static void fail(String m) { System.err.println("ERROR: " + m); System.exit(1); }
 
-    static void patch(File inFile, File outFile, boolean sprites, boolean hooh, boolean floors, boolean eggs) throws Exception {
+    static void patch(File inFile, File outFile, boolean sprites, boolean hooh, boolean floors, boolean eggs, boolean prompts) throws Exception {
         List<String> applied = new ArrayList<String>();
         Map<String, byte[]> patchedBytes = new TreeMap<String, byte[]>();
         Map<String, Integer> hookCalls = new TreeMap<String, Integer>();
@@ -182,7 +184,7 @@ public final class PatchJar {
                     {
                         classes++;
                         String cn = n.substring(0, n.length() - 6);
-                        byte[] r = BugFixAgent.transformClass(cn, data, sprites, hooh, floors, eggs, applied);
+                        byte[] r = BugFixAgent.transformClass(cn, data, sprites, hooh, floors, eggs, prompts, applied);
                         if (r != null) {
                             data = r;
                             patchedClasses++;
@@ -198,22 +200,24 @@ public final class PatchJar {
                     zout.closeEntry();
                 }
                 // 3. runtime support classes
-                if (floors || eggs) {
-                    int hooks = 0;
+                if (floors || eggs || prompts) {
+                    int supportClasses = 0;
                     File self = new File(PatchJar.class.getProtectionDomain().getCodeSource().getLocation().toURI());
                     try (ZipFile zself = new ZipFile(self)) {
                         for (Enumeration<? extends ZipEntry> en = zself.entries(); en.hasMoreElements();) {
                             ZipEntry e = en.nextElement();
-                            if (!e.getName().startsWith("local/pokewilds/bugfix/Hooks")) continue;
+                            boolean hookSupport = (floors || eggs) && e.getName().startsWith("local/pokewilds/bugfix/Hooks");
+                            boolean promptSupport = prompts && e.getName().equals("local/pokewilds/bugfix/ControllerConfirm.class");
+                            if (!hookSupport && !promptSupport) continue;
                             ZipEntry ne = new ZipEntry(e.getName());
                             ne.setTime(inFile.lastModified());
                             zout.putNextEntry(ne);
                             zout.write(read(zself, e));
                             zout.closeEntry();
-                            hooks++;
+                            supportClasses++;
                         }
                     }
-                    if (hooks == 0) throw new PatchException("internal error: the runtime support classes were not found next to the patcher");
+                    if (supportClasses == 0) throw new PatchException("internal error: the runtime support classes were not found next to the patcher");
                 }
                 ZipEntry note = new ZipEntry("META-INF/BUGFIX.txt");
                 note.setTime(inFile.lastModified());
@@ -222,7 +226,7 @@ public final class PatchJar {
                 zout.closeEntry();
             }
             // 4. every patch must have applied exactly as expected, or nothing is written
-            check(applied, hookCalls, sprites, hooh, floors, eggs);
+            check(applied, hookCalls, sprites, hooh, floors, eggs, prompts);
             if (outFile.exists() && !outFile.delete()) throw new PatchException("cannot replace " + outFile);
             if (!tmp.renameTo(outFile)) throw new PatchException("cannot write " + outFile);
         }
@@ -236,7 +240,7 @@ public final class PatchJar {
     }
 
     /** What a complete patch of PokeWilds 0.8.11 looks like. */
-    static void check(List<String> applied, Map<String, Integer> hooks, boolean sprites, boolean hooh, boolean floors, boolean eggs) throws PatchException {
+    static void check(List<String> applied, Map<String, Integer> hooks, boolean sprites, boolean hooh, boolean floors, boolean eggs, boolean prompts) throws PatchException {
         List<String> problems = new ArrayList<String>();
         if (sprites) {
             need(applied, "sprites:" + BugFixAgent.UPPER, problems);
@@ -260,6 +264,10 @@ public final class PatchJar {
         } else {
             for (String k : new String[] {"newPokemonMap", "tilesChanged", "viewOwner", "viewOverworld", "viewAllFloors", "viewSave", "restoreExact", "writeJsonZip"}) expect(hooks, k, 0, problems);
         }
+        if (prompts) {
+            for (String c : new String[] {"DrawControls", "DrawUseTossMenu", "DrawPokemonMenu$SelectedMenu", "DrawItemMenu$DrawGuideText", "TrainerTipsTile", "Pokemon$SetNickname", "Tile$SetSignText"})
+                need(applied, "prompts:com/pkmngen/game/" + c, problems);
+        }
         if (!problems.isEmpty()) {
             StringBuilder sb = new StringBuilder("the patches did not apply as expected, nothing was written:");
             for (String p : problems) sb.append("\n  - ").append(p);
@@ -275,7 +283,7 @@ public final class PatchJar {
 
     private static String describe(List<String> applied) {
         StringBuilder sb = new StringBuilder("This jar was patched by BugFix for PokeWilds 0.8.11.\n"
-                + "Patches: sprites (Cut/Ride/Build facing), hooh (Ho-Oh NullPointerException), floors (one Pokemon map per floor), eggs (egg floor when saving).\n\nApplied:\n");
+                + "Patches: sprites (Cut/Ride/Build facing), hooh (Ho-Oh NullPointerException), floors (one Pokemon map per floor), eggs (egg floor when saving), prompts (controller-oriented prompts).\n\nApplied:\n");
         List<String> sorted = new ArrayList<String>(applied);
         java.util.Collections.sort(sorted);
         for (String s : sorted) sb.append("  ").append(s).append('\n');

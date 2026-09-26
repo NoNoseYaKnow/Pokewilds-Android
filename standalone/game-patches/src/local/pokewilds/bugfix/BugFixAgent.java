@@ -22,7 +22,8 @@ import local.pokewilds.bugfix.asm.Opcodes;
  * <li>eggs: an egg laid on an upper floor is saved as belonging to the first floor;</li>
  * <li>(part of floors) saves retain exact floor placements in a versioned ZIP entry.</li>
  * </ol>
- * Each patch can be switched off with -Dbugfix.NAME=false (sprites, hooh, floors, eggs).
+ * The original fixes can be switched off with -Dbugfix.NAME=false (sprites, hooh, floors, eggs).
+ * The controller prompt patch is opt-in with -Dbugfix.prompts=true.
  * The floors patch also needs the exact PokeWilds 0.8.11 jar (checked by hash) so that it is applied completely or not at all.
  *
  * Sprites: DrawPlayerUpper/Lower force the drawn region's Y to Player.spriteOffsetY.
@@ -99,6 +100,7 @@ public final class BugFixAgent {
 
     public static void premain(String args, Instrumentation inst) {
         final boolean sprites = enabled("sprites"), hooh = enabled("hooh"), eggs = enabled("eggs");
+        final boolean prompts = "true".equalsIgnoreCase(System.getProperty("bugfix.prompts", "false"));
         final boolean floors;
         if (!enabled("floors")) {
             floors = false;
@@ -116,7 +118,7 @@ public final class BugFixAgent {
                 try {
                     // The floors and eggs patches call Hooks, so the game's class loader must be able to see it.
                     boolean hooks = (floors || eggs) && hooksVisibleFrom(l);
-                    return transformClass(name, buf, sprites, hooh, floors && hooks, eggs && hooks, null);
+                    return transformClass(name, buf, sprites, hooh, floors && hooks, eggs && hooks, prompts, null);
                 } catch (Throwable t) {
                     System.err.println("[bugfix] failed on " + name + ", left unpatched: " + t);
                     return null;
@@ -131,6 +133,11 @@ public final class BugFixAgent {
      * Returns the new bytes, or null if nothing changed. {@code applied} (may be null) collects a label per patch.
      */
     public static byte[] transformClass(String name, byte[] buf, boolean sprites, boolean hooh, boolean floors, boolean eggs, java.util.List<String> applied) {
+        return transformClass(name, buf, sprites, hooh, floors, eggs, false, applied);
+    }
+
+    /** Same as the legacy overload, with the controller-prompt patch independently selectable. */
+    public static byte[] transformClass(String name, byte[] buf, boolean sprites, boolean hooh, boolean floors, boolean eggs, boolean prompts, java.util.List<String> applied) {
         byte[] cur = buf;
         boolean changed = false;
         if (sprites && (name.equals(UPPER) || name.equals(LOWER))) {
@@ -160,6 +167,10 @@ public final class BugFixAgent {
         if (eggs && name.equals(POKEMON_DATA_V07)) {
             byte[] r = patchEggFloor(cur);
             if (r != null) { cur = r; changed = true; if (applied != null) applied.add("eggs:" + name); }
+        }
+        if (prompts) {
+            byte[] r = PromptPatch.transform(name, cur, applied);
+            if (r != null) { cur = r; changed = true; }
         }
         return changed ? cur : null;
     }

@@ -83,14 +83,18 @@ before deleting if you may want to restore them later.
 
 ## Patches
 
-After quitting the game, open **App settings** to manage six included
+After quitting the game, open **App settings** to manage eight included
 PokeWilds 0.8.11 patches: directional mod sprites, Ho-Oh, Pokémon on separate
-building floors, eggs laid on upper floors, a field move wheel, and shoulder
-zoom. All six are on by default; each switch takes effect on the next game start.
+building floors, eggs laid on upper floors, a field move wheel, shoulder
+zoom, a Select map shortcut, and controller button prompts. All eight are on by default; each switch takes effect on the next game start.
 Hold L2 to choose a field move, or use L1/R1 on a controller or the touch overlay
 to zoom. The existing on-screen controls and gamepad bindings remain available;
 L1/R1 still cycle materials during BUILD and DIG. The app runs selected patches
 from bundled Java agents and keeps the verified official game JAR unchanged.
+With the map shortcut enabled, Select opens the map and Select or B returns to
+gameplay. Controller prompts use the on-screen button labels; Start confirms
+nickname and sign text, while entering text still requires a keyboard. Both
+patches can be disabled independently and do not change the save format.
 When Pokémon on different floors share coordinates, the floor fix
 stores their exact placements in an extra entry of the map save ZIP. Older
 PokeWilds versions read only a legacy projection, where some Pokémon may be

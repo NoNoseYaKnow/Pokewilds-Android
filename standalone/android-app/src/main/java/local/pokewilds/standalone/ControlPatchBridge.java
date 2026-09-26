@@ -20,7 +20,7 @@ import java.util.Set;
 final class ControlPatchBridge {
     static final String[] MOVES = {"BUILD", "CUT", "FLY", "SURF", "DIG", "RIDE", "SMASH", "TELEPORT",
         "FLASH", "CHARM", "POWER", "REPEL", "ATTACK", "HEADBUTT", "PAINT"};
-    private final boolean radial, zoom;
+    private final boolean radial, zoom, map, prompts;
     private final File directory;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Properties state = new Properties();
@@ -33,9 +33,11 @@ final class ControlPatchBridge {
     private boolean active, axisTrigger;
     private float stickX, stickY, hatX, hatY;
 
-    ControlPatchBridge(Context context, boolean radial, boolean zoom, Runnable changed) {
+    ControlPatchBridge(Context context, boolean radial, boolean zoom, boolean map, boolean prompts, Runnable changed) {
         this.radial = radial;
         this.zoom = zoom;
+        this.map = map;
+        this.prompts = prompts;
         this.changed = changed;
         directory = new File(context.getFilesDir(), "shared-tmp/odin-controls");
     }
@@ -158,6 +160,16 @@ final class ControlPatchBridge {
         int code = event.getKeyCode();
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         String owner = "key:" + event.getDeviceId();
+        if (prompts && code == KeyEvent.KEYCODE_BUTTON_START && !RuntimeService.saveDialogVisible) {
+            if (down && event.getRepeatCount() == 0 && !event.isCanceled())
+                send("START", System.currentTimeMillis(), null);
+            return true;
+        }
+        if (map && code == KeyEvent.KEYCODE_BUTTON_SELECT) {
+            if (down && event.getRepeatCount() == 0 && !event.isCanceled() && !wheelShown() && fresh())
+                send("MAP", System.currentTimeMillis(), null);
+            return true;
+        }
         if (radial && code == KeyEvent.KEYCODE_BUTTON_L2) {
             if (event.isCanceled()) cancelWheelOwner(owner);
             else if (event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)

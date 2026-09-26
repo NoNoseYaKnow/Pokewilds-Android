@@ -258,14 +258,18 @@ the same interrupted-swap recovery used by imports. Export a backup first if
 you may want to restore deleted files.
 
 The **Patches** section in App settings groups directional sprites, Ho-Oh, and
-egg floor saving under **Fixes**. The field move wheel, shoulder zoom, and
-separate floor occupancy appear under **Enhancements**. Choices are saved
-in app preferences and take effect when the game next starts. All six are on
+egg floor saving under **Fixes**. The field move wheel, shoulder zoom, Select map shortcut, controller button
+prompts, and separate floor occupancy appear under **Enhancements**. Choices are saved
+in app preferences and take effect when the game next starts. All eight are on
 by default. The verified official `pokewilds.jar` stays untouched: the app
 stages only the agents needed by the selected patches in its private session
 directory. The wheel uses L2; zoom uses L1/R1 on physical controllers or the
-touch overlay in the world and the map opened from the Start
-menu. The original on-screen controls remain in place,
+touch overlay in the world and the map. Select opens the map directly and
+Select or B returns to gameplay; the Start-menu map retains its menu return.
+Controller prompts replace built-in keyboard instructions with A/B, L1/R1,
+Start, and D-pad labels. Start also confirms nickname/sign edits even when
+keyboard-Start is remapped; text entry still needs the keyboard. Player-written
+text is not rewritten. Both new patches are independent of the wheel and zoom. The original on-screen controls remain in place,
 and L1/R1 still cycle BUILD/DIG materials. No user-supplied code patches are
 accepted. World zoom advances in whole framebuffer-pixel steps. With Auto
 display mode, enabling zoom renders the game at half the available display size

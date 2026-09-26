@@ -44,6 +44,7 @@ public final class LauncherActivity extends Activity {
     private CheckBox eggsPatchControl;
     private CheckBox radialPatchControl;
     private CheckBox zoomPatchControl;
+    private CheckBox mapPatchControl, promptsPatchControl;
     private final java.util.concurrent.ExecutorService files = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -485,6 +486,8 @@ public final class LauncherActivity extends Activity {
         if (eggsPatchControl != null) eggsPatchControl.setEnabled(patchesEnabled);
         if (radialPatchControl != null) radialPatchControl.setEnabled(patchesEnabled);
         if (zoomPatchControl != null) zoomPatchControl.setEnabled(patchesEnabled);
+        if (mapPatchControl != null) mapPatchControl.setEnabled(patchesEnabled);
+        if (promptsPatchControl != null) promptsPatchControl.setEnabled(patchesEnabled);
     }
 
     private void addPatchControls(LinearLayout layout) {
@@ -502,8 +505,10 @@ public final class LauncherActivity extends Activity {
             options.eggs, PatchOptions.EGGS);
         radialPatchControl = patchCheckbox("Field move wheel", "Hold L2, choose a field move by analog stick or touch, then release to use it.",
             options.radial, PatchOptions.RADIAL);
-        zoomPatchControl = patchCheckbox("Shoulder zoom", "Use L1/R1 to zoom in the world or the map opened from the Start menu; BUILD/DIG still cycle materials. Auto Fit uses pixel-aligned scaling for crisp zoom and may use more power.",
+        zoomPatchControl = patchCheckbox("Shoulder zoom", "Use L1/R1 to zoom in the world or the map; BUILD/DIG still cycle materials. Auto Fit uses pixel-aligned scaling for crisp zoom and may use more power.",
             options.zoom, PatchOptions.ZOOM);
+        mapPatchControl = patchCheckbox("Select map shortcut", "Press Select to open the map during gameplay. Select or B closes it and returns to gameplay.", options.map, PatchOptions.MAP);
+        promptsPatchControl = patchCheckbox("Controller button prompts", "Show A/B, L1/R1, Start, and D-pad in built-in game instructions. Start also confirms nickname and sign text; typing still uses a keyboard.", options.prompts, PatchOptions.PROMPTS);
         addPatchSubheading(layout, "Fixes");
         layout.addView(spritesPatchControl);
         layout.addView(hoohPatchControl);
@@ -511,6 +516,8 @@ public final class LauncherActivity extends Activity {
         addPatchSubheading(layout, "Enhancements");
         layout.addView(radialPatchControl);
         layout.addView(zoomPatchControl);
+        layout.addView(mapPatchControl);
+        layout.addView(promptsPatchControl);
         layout.addView(floorsPatchControl);
         TextView floorWarning = new TextView(this);
         floorWarning.setText("SAVE COMPATIBILITY: When Pokémon share coordinates on different floors, this patch adds exact placements to the world save. Older PokeWilds versions read only a legacy copy, where some Pokémon may be moved or absent. Saving there removes the exact placements. Export a backup and keep this patch on for affected worlds.");
@@ -530,7 +537,14 @@ public final class LauncherActivity extends Activity {
 
     private CheckBox patchCheckbox(String label, String description, boolean checked, String patch) {
         CheckBox checkbox = new CheckBox(this);
-        checkbox.setText(label + " — " + description);
+        android.text.SpannableString text = new android.text.SpannableString(label + " — " + description);
+        text.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+            0, label.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        checkbox.setText(text);
+        LinearLayout.LayoutParams spacing = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        spacing.bottomMargin = Math.round(10 * getResources().getDisplayMetrics().density);
+        checkbox.setLayoutParams(spacing);
         checkbox.setChecked(checked);
         checkbox.setOnCheckedChangeListener((button, value) -> {
             if (PatchOptions.read(LauncherActivity.this).isEnabled(patch) == value) return;

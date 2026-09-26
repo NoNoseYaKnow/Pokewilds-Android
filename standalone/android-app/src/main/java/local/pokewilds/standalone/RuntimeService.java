@@ -68,7 +68,7 @@ public final class RuntimeService extends Service {
             try (PrintWriter out = new PrintWriter(log)) {
                 out.println("PokeWilds 0.8.11; target SDK " + getApplicationInfo().targetSdkVersion
                     + "; graphics=" + options.graphics + "; viewport=" + options.width + "x" + options.height);
-                out.println("Enabled game patches: " + (patches.anyEnabled() ? String.join(", ", patches.enabledNames()) : "none"));
+                out.println("Enabled game patches: " + (patches.enabledNames().isEmpty() ? "none" : String.join(", ", patches.enabledNames())));
             }
             if (!GameInstaller.isInstalled(this)) throw new IOException("Game files are not installed; open the launcher to download or select them");
             status = "Preparing bundled runtime files…";
@@ -125,6 +125,8 @@ public final class RuntimeService extends Service {
                 gameCommand.add("-javaagent:/tmp/control-patches.jar");
                 gameCommand.add("-Dcontrols.radial=" + patches.radial);
                 gameCommand.add("-Dcontrols.zoom=" + patches.zoom);
+                gameCommand.add("-Dcontrols.map=" + patches.map);
+                gameCommand.add("-Dcontrols.prompts=" + patches.prompts);
                 gameCommand.add("-Dcontrols.nativePixels=" + (patches.zoom && options.autoViewport));
             }
             gameCommand.addAll(Arrays.asList("-jar", "/game/pokewilds.jar"));

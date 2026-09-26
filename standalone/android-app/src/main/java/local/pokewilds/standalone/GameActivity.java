@@ -128,7 +128,7 @@ public final class GameActivity extends com.termux.x11.MainActivity implements a
             touchControls = new TouchControls(this, this::dispatchTouchKey,
                 () -> controllerButtons.cancelOwner("touch"));
             if (patches.controlsEnabled()) {
-                controlPatches = new ControlPatchBridge(this, patches.radial, patches.zoom,
+                controlPatches = new ControlPatchBridge(this, patches.radial, patches.zoom, patches.map, patches.prompts,
                     () -> { if (touchControls != null) touchControls.invalidate(); });
                 touchControls.setControlPatches(controlPatches);
             }

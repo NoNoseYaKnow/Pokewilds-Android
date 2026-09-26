@@ -27,6 +27,6 @@ if [[ "$actual" != "$expected" ]]; then
 fi
 rm -rf build/classes dist
 mkdir -p build/classes dist
-javac --release 8 -Xlint:-options -cp "$game_jar" -d build/classes src/com/pkmngen/game/OdinAgent.java
+javac --release 8 -Xlint:-options -cp "$game_jar" -d build/classes src/com/pkmngen/game/*.java
 printf 'Premain-Class: com.pkmngen.game.OdinAgent\n' > build/manifest.txt
 jar --create --file dist/control-patches.jar --manifest build/manifest.txt -C build/classes .

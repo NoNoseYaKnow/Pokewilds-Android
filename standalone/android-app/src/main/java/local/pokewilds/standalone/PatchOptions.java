@@ -15,6 +15,8 @@ final class PatchOptions {
     static final String EGGS = "eggs";
     static final String RADIAL = "radial";
     static final String ZOOM = "zoom";
+    static final String MAP = "map";
+    static final String PROMPTS = "prompts";
 
     private static final String PREFERENCES = "patch-options";
     private static final String KEY_PREFIX = "bugfix.";
@@ -25,12 +27,20 @@ final class PatchOptions {
     final boolean eggs;
     final boolean radial;
     final boolean zoom;
+    final boolean map;
+    final boolean prompts;
 
     PatchOptions(boolean sprites, boolean hooh, boolean floors, boolean eggs) {
         this(sprites, hooh, floors, eggs, false, false);
     }
 
     PatchOptions(boolean sprites, boolean hooh, boolean floors, boolean eggs, boolean radial, boolean zoom) {
+        this(sprites, hooh, floors, eggs, radial, zoom, false, false);
+    }
+
+    PatchOptions(boolean sprites, boolean hooh, boolean floors, boolean eggs, boolean radial, boolean zoom, boolean map, boolean prompts) {
+        this.map = map;
+        this.prompts = prompts;
         this.sprites = sprites;
         this.hooh = hooh;
         this.floors = floors;
@@ -47,12 +57,14 @@ final class PatchOptions {
             preferences.getBoolean(KEY_PREFIX + FLOORS, true),
             preferences.getBoolean(KEY_PREFIX + EGGS, true),
             preferences.getBoolean(KEY_PREFIX + RADIAL, true),
-            preferences.getBoolean(KEY_PREFIX + ZOOM, true));
+            preferences.getBoolean(KEY_PREFIX + ZOOM, true),
+            preferences.getBoolean(KEY_PREFIX + MAP, true),
+            preferences.getBoolean(KEY_PREFIX + PROMPTS, true));
     }
 
     static void save(Context context, String patch, boolean enabled) {
         if (!SPRITES.equals(patch) && !HOOH.equals(patch) && !FLOORS.equals(patch) && !EGGS.equals(patch)
-            && !RADIAL.equals(patch) && !ZOOM.equals(patch)) {
+            && !RADIAL.equals(patch) && !ZOOM.equals(patch) && !MAP.equals(patch) && !PROMPTS.equals(patch)) {
             throw new IllegalArgumentException("Unknown patch: " + patch);
         }
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -66,11 +78,13 @@ final class PatchOptions {
         if (EGGS.equals(patch)) return eggs;
         if (RADIAL.equals(patch)) return radial;
         if (ZOOM.equals(patch)) return zoom;
+        if (MAP.equals(patch)) return map;
+        if (PROMPTS.equals(patch)) return prompts;
         throw new IllegalArgumentException("Unknown patch: " + patch);
     }
 
-    boolean anyEnabled() { return sprites || hooh || floors || eggs; }
-    boolean controlsEnabled() { return radial || zoom; }
+    boolean anyEnabled() { return sprites || hooh || floors || eggs || prompts; }
+    boolean controlsEnabled() { return radial || zoom || map || prompts; }
 
     List<String> jvmArguments() {
         List<String> arguments = new ArrayList<>();
@@ -78,6 +92,7 @@ final class PatchOptions {
         arguments.add("-Dbugfix.hooh=" + hooh);
         arguments.add("-Dbugfix.floors=" + floors);
         arguments.add("-Dbugfix.eggs=" + eggs);
+        arguments.add("-Dbugfix.prompts=" + prompts);
         return Collections.unmodifiableList(arguments);
     }
 
@@ -89,6 +104,8 @@ final class PatchOptions {
         if (eggs) names.add("Egg floor saving");
         if (radial) names.add("Field move wheel");
         if (zoom) names.add("Shoulder zoom");
+        if (map) names.add("Select map shortcut");
+        if (prompts) names.add("Controller button prompts");
         return Collections.unmodifiableList(names);
     }
 }
