@@ -1,5 +1,34 @@
 # Standalone prototype validation
 
+## 0.9 selectable game patches (2026-09-25)
+
+App settings now offers six built-in patches, all enabled by default; an
+explicitly disabled patch stays off. The four fixes address directional sprites
+with some mods, Ho-Oh freezing nearby Pokémon, eggs saved on the wrong floor,
+and Pokémon occupying the same coordinates on separate building floors. The
+field move wheel and shoulder zoom are separate enhancements. The official game
+JAR remains untouched. When floors overlap, the floor patch stores exact
+placements alongside a legacy save projection; the app warns about older-game
+compatibility and blocks loading an affected world with the patch off.
+
+The game patch suite passed all 16 combinations of the four fix toggles,
+bytecode verification, floor placement checks, and patch/restore checks. The
+full Android build, JVM tests, eight host Python tests, and signed release
+assembly passed. The APK verifier found no errors or warnings, verified the
+signature and payload hash, and confirmed that no game files are bundled.
+
+On a Samsung SM-S901U, the patch implementation loaded an existing save and
+responded to on-screen movement, shoulder zoom, and L2 wheel open/close. The
+Auto display with zoom filled the usable landscape area at 2× scale. Short
+landscape samples showed about 58–59 presented frames per second while standing
+and walking. This device check preceded the default-on and release metadata
+changes; the exact v0.9 APK received build and static verification, not a new
+device install.
+
+Version code 9, version name 0.9: `PokeWilds-Android-0.9-arm64.apk` is
+207,349,087 bytes, SHA-256
+`120b5e71f7af358c830a609b8f81ce33a512de4d9498e24c8efbd437d000d636`.
+
 ## 0.8 selective mod file removal (2026-09-24)
 
 App settings now opens an in-app browser for the private `mods/` tree. Users

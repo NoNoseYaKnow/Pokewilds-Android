@@ -15,7 +15,7 @@ separate testing. This is still a prototype, not a general Android release.
 ## Install and play
 
 Download the signed Android APK from the
-[v0.8.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.8.0),
+[v0.9.0 release](https://github.com/NoNoseYaKnow/Pokewilds-Android/releases/tag/v0.9.0),
 or see [Build from source](#build-from-source) to build it locally.
 
 On first launch, the app starts downloading the pinned PokeWilds 0.8.11 release
