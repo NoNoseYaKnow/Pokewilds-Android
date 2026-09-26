@@ -33,9 +33,9 @@
     },
     {
       "Package": "libandroid-stub",
-      "Version": "29-3",
-      "Filename": "pool/main/liba/libandroid-stub/libandroid-stub_29-3_aarch64.deb",
-      "SHA256": "b40a2f494ab9fcfad304279f7c885c3fc3f7553c64cac20c34bd9cb7e5bafed4"
+      "Version": "30",
+      "Filename": "pool/main/liba/libandroid-stub/libandroid-stub_30_aarch64.deb",
+      "SHA256": "39ac1597d20a81276748237c02051906a0433beaf9a1918584d9e22135c4ce2e"
     },
     {
       "Package": "libandroid-support",
@@ -45,15 +45,15 @@
     },
     {
       "Package": "libc++",
-      "Version": "29",
-      "Filename": "pool/main/libc/libc++/libc++_29_aarch64.deb",
-      "SHA256": "bb9f12113c137aa0e8513bb51cc49fe77a5ce3ca39ab9e92c57d228ecdf00222"
+      "Version": "30",
+      "Filename": "pool/main/libc/libc++/libc++_30_aarch64.deb",
+      "SHA256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
     },
     {
       "Package": "libexpat",
-      "Version": "2.8.4",
-      "Filename": "pool/main/libe/libexpat/libexpat_2.8.4_aarch64.deb",
-      "SHA256": "71934cf00b404627702034bd1308cb58353dd851d9a2d3ecd9205b4ae6a67a27"
+      "Version": "2.8.5",
+      "Filename": "pool/main/libe/libexpat/libexpat_2.8.5_aarch64.deb",
+      "SHA256": "3b2c9b061fa890b69b88d2f5dd993efba902d678fe8e1990268892d1faf15e5e"
     },
     {
       "Package": "libflac",

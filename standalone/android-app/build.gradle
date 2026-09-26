@@ -26,6 +26,8 @@ android {
     packaging { jniLibs { useLegacyPackaging = true } }
     sourceSets.main {
         assets.srcDirs += ['../runtime/build/android-assets']
+        assets.srcDirs += ['../game-patches/dist']
+        assets.srcDirs += ['../control-patches/dist']
         jniLibs.srcDirs += ['../native/build/jniLibs']
     }
     signingConfigs {
@@ -59,4 +61,21 @@ tasks.register('prepareRuntimeAssets', Sync) {
     from('../packaging/game-source.json')
     into('../runtime/build/android-assets')
 }
-tasks.named('preBuild').configure { dependsOn('prepareRuntimeAssets') }
+tasks.register('buildPatchAgent', Exec) {
+    workingDir file('../game-patches')
+    commandLine 'bash', 'build.sh'
+    inputs.files(fileTree('../game-patches/src'), fileTree('../game-patches/tools'),
+        file('../game-patches/build.sh'), file('../game-patches/LICENSE'),
+        file('../game-patches/ASM-LICENSE.txt'), file('../game-patches/PROVENANCE.md'))
+    outputs.file(file('../game-patches/dist/bugfix.jar'))
+}
+tasks.register('buildControlAgent', Exec) {
+    workingDir file('../control-patches')
+    commandLine 'bash', 'build.sh'
+    inputs.files(fileTree('../control-patches/src'), file('../control-patches/build.sh'))
+    outputs.file(file('../control-patches/dist/control-patches.jar'))
+}
+tasks.named('preBuild').configure { dependsOn('prepareRuntimeAssets', 'buildPatchAgent', 'buildControlAgent') }
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+    dependsOn('buildPatchAgent', 'buildControlAgent')
+}

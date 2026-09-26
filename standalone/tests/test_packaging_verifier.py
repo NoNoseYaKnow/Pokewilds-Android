@@ -9,12 +9,41 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from standalone.packaging.verify_apk import inspect_game_source, inspect_payload, verify
+from standalone.packaging.verify_apk import inspect_control_agent, inspect_game_source, inspect_patch_agent, inspect_payload, verify
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingVerifierTest(unittest.TestCase):
+    def test_patch_agent_requires_runtime_classes_and_premain(self):
+        agent_buffer = io.BytesIO()
+        with zipfile.ZipFile(agent_buffer, "w") as agent:
+            agent.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nPremain-Class: local.pokewilds.bugfix.BugFixAgent\r\n")
+            for name in ("BugFixAgent", "Hooks", "asm/ClassReader"):
+                agent.writestr(f"local/pokewilds/bugfix/{name}.class", b"class")
+        apk_buffer = io.BytesIO()
+        with zipfile.ZipFile(apk_buffer, "w") as apk:
+            apk.writestr("assets/bugfix.jar", agent_buffer.getvalue())
+        with zipfile.ZipFile(io.BytesIO(apk_buffer.getvalue())) as apk:
+            errors = []
+            found = inspect_patch_agent(apk, errors)
+        self.assertEqual(errors, [])
+        self.assertEqual(found["asset"], "assets/bugfix.jar")
+
+    def test_control_agent_rejects_donor_input_hook(self):
+        agent_buffer = io.BytesIO()
+        with zipfile.ZipFile(agent_buffer, "w") as agent:
+            agent.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nPremain-Class: com.pkmngen.game.OdinAgent\r\n")
+            agent.writestr("com/pkmngen/game/OdinAgent.class", b"class")
+            agent.writestr("com/pkmngen/game/OdinInputHook.class", b"hook")
+        apk_buffer = io.BytesIO()
+        with zipfile.ZipFile(apk_buffer, "w") as apk:
+            apk.writestr("assets/control-patches.jar", agent_buffer.getvalue())
+        with zipfile.ZipFile(io.BytesIO(apk_buffer.getvalue())) as apk:
+            errors = []
+            inspect_control_agent(apk, errors)
+        self.assertIn("built-in control agent contains the donor input replacement hook", errors)
+
     def test_requires_exact_pinned_game_source_metadata(self):
         source_path = ROOT / "packaging" / "game-source.json"
         source = json.loads(source_path.read_text(encoding="utf-8"))

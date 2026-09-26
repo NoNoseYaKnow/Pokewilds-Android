@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Path;
 import android.hardware.input.InputManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -37,6 +38,7 @@ public final class TouchControls extends View implements InputManager.InputDevic
     private final RectF[] dpad = {new RectF(), new RectF(), new RectF(), new RectF()};
     private final RectF aButton = new RectF(), bButton = new RectF(), startButton = new RectF();
     private final RectF cButton = new RectF(), vButton = new RectF(), toggleButton = new RectF(), keyboardButton = new RectF();
+    private final RectF radialButton = new RectF(), zoomOutButton = new RectF(), zoomInButton = new RectF();
     private final TouchInputState inputState = new TouchInputState(
         (key, down) -> sendKey(key, down ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP));
     private final KeySink keySink;
@@ -47,6 +49,8 @@ public final class TouchControls extends View implements InputManager.InputDevic
     private int touchMode;
     private boolean controllerConnected;
     private boolean controlsHidden;
+    private ControlPatchBridge controlPatches;
+    private int radialPointer = -1;
 
     public TouchControls(Context context, KeySink sink, Runnable keyboardToggle) {
         super(context);
@@ -89,6 +93,8 @@ public final class TouchControls extends View implements InputManager.InputDevic
 
     public int getTouchMode() { return touchMode; }
 
+    void setControlPatches(ControlPatchBridge bridge) { controlPatches = bridge; invalidate(); }
+
     public void setKeyBindings(GameKeyBindings bindings) {
         releaseAll();
         dpadKeys[0] = bindings.up; dpadKeys[1] = bindings.down;
@@ -99,6 +105,8 @@ public final class TouchControls extends View implements InputManager.InputDevic
 
     /** Sends ACTION_UP for every key currently held by a finger. */
     public void releaseAll() {
+        if (radialPointer != -1 && controlPatches != null) controlPatches.wheel("touch", false);
+        radialPointer = -1;
         inputState.releaseAll();
     }
 
@@ -151,6 +159,9 @@ public final class TouchControls extends View implements InputManager.InputDevic
         vButton.set(width - dp(52), shoulderY - dp(19), width - dp(10), shoulderY + dp(19));
         toggleButton.set(width - dp(88), dp(8), width - dp(8), dp(38));
         keyboardButton.set(width - dp(160), dp(8), width - dp(96), dp(38));
+        radialButton.set(dp(12), dp(8), dp(68), dp(42));
+        zoomOutButton.set(width - dp(162), shoulderY - dp(19), width - dp(120), shoulderY + dp(19));
+        zoomInButton.set(width - dp(210), shoulderY - dp(19), width - dp(168), shoulderY + dp(19));
     }
 
     @Override protected void onDraw(Canvas canvas) {
@@ -161,7 +172,40 @@ public final class TouchControls extends View implements InputManager.InputDevic
             drawButton(canvas, aButton, "A"); drawButton(canvas, bButton, "B"); drawButton(canvas, startButton, "Start");
             drawButton(canvas, cButton, "C"); drawButton(canvas, vButton, "V");
             drawButton(canvas, keyboardButton, "Keyboard"); drawButton(canvas, toggleButton, "×");
+            if (controlPatches != null && controlPatches.radialEnabled()) drawButton(canvas, radialButton, "L2");
+            if (controlPatches != null && controlPatches.zoomEnabled()) {
+                drawButton(canvas, zoomOutButton, "−"); drawButton(canvas, zoomInButton, "+");
+            }
         } else if (isVisibleByMode()) drawButton(canvas, toggleButton, "Controls");
+        if (controlPatches != null && controlPatches.wheelShown()) drawRadialWheel(canvas);
+    }
+
+    private void drawRadialWheel(Canvas canvas) {
+        float cx = getWidth() / 2f, cy = getHeight() / 2f;
+        float radius = Math.min(getWidth(), getHeight()) * .37f;
+        paint.setColor(Color.argb(195, 8, 11, 18));
+        canvas.drawCircle(cx, cy, radius * 1.12f, paint);
+        for (int i = 0; i < ControlPatchBridge.MOVES.length; i++) {
+            double middle = -Math.PI / 2 + i * Math.PI * 2 / ControlPatchBridge.MOVES.length;
+            double start = middle - Math.PI / ControlPatchBridge.MOVES.length;
+            Path sector = new Path(); sector.moveTo(cx, cy);
+            for (int point = 0; point <= 8; point++) {
+                double angle = start + 2 * Math.PI / ControlPatchBridge.MOVES.length * point / 8;
+                sector.lineTo(cx + (float) Math.cos(angle) * radius, cy + (float) Math.sin(angle) * radius);
+            }
+            sector.close();
+            paint.setColor(i == controlPatches.selected() ? Color.rgb(96, 132, 174)
+                : i % 2 == 0 ? Color.rgb(38, 43, 53) : Color.rgb(30, 35, 44));
+            canvas.drawPath(sector, paint);
+            textPaint.setColor(controlPatches.available(i) ? Color.WHITE : Color.GRAY);
+            textPaint.setTextSize(dp(10)); textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText(ControlPatchBridge.MOVES[i], cx + (float) Math.cos(middle) * radius * .70f,
+                cy + (float) Math.sin(middle) * radius * .70f, textPaint);
+        }
+        paint.setColor(Color.rgb(12, 15, 21)); canvas.drawCircle(cx, cy, radius * .28f, paint);
+        textPaint.setColor(Color.WHITE); textPaint.setTextSize(dp(12));
+        int selected = controlPatches.selected();
+        canvas.drawText(selected < 0 ? "SELECT" : ControlPatchBridge.MOVES[selected], cx, cy, textPaint);
     }
 
     private void drawButton(Canvas canvas, RectF rect, String label) {
@@ -177,6 +221,31 @@ public final class TouchControls extends View implements InputManager.InputDevic
 
     @Override public boolean onTouchEvent(MotionEvent event) {
         int action = event.getActionMasked();
+        if (controlPatches != null && controlPatches.radialEnabled()) {
+            int pointer = event.getPointerId(event.getActionIndex());
+            if ((action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN)
+                && shouldDrawControls() && radialButton.contains(event.getX(event.getActionIndex()), event.getY(event.getActionIndex()))) {
+                inputState.releaseAll(); radialPointer = pointer;
+                controlPatches.wheel("touch", true); invalidate(); return true;
+            }
+            if (radialPointer == pointer && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP)
+                && !controlPatches.wheelShown()) {
+                radialPointer = -1; return true;
+            }
+            if (controlPatches.wheelShown()) {
+                if (action == MotionEvent.ACTION_MOVE) {
+                    for (int i = 0; i < event.getPointerCount(); i++)
+                        if (event.getPointerId(i) != radialPointer
+                            || !radialButton.contains(event.getX(i), event.getY(i)))
+                            controlPatches.selectTouch(event.getX(i), event.getY(i), getWidth(), getHeight());
+                } else if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+                    controlPatches.selectTouch(event.getX(event.getActionIndex()), event.getY(event.getActionIndex()), getWidth(), getHeight());
+                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
+                    if (pointer == radialPointer) { radialPointer = -1; controlPatches.wheel("touch", false); }
+                } else if (action == MotionEvent.ACTION_CANCEL) releaseAll();
+                invalidate(); return true;
+            }
+        }
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             int index = event.getActionIndex(), pointer = event.getPointerId(index);
             int key = hitKey(event.getX(index), event.getY(index));
@@ -204,6 +273,10 @@ public final class TouchControls extends View implements InputManager.InputDevic
     private int hitKey(float x, float y) {
         if (toggleButton.contains(x, y)) return TOGGLE;
         if (shouldDrawControls() && keyboardButton.contains(x, y)) return KEYBOARD;
+        if (controlPatches != null && controlPatches.zoomEnabled() && shouldDrawControls()) {
+            if (zoomOutButton.contains(x, y)) return KeyEvent.KEYCODE_BUTTON_L1;
+            if (zoomInButton.contains(x, y)) return KeyEvent.KEYCODE_BUTTON_R1;
+        }
         for (int i = 0; i < dpad.length; i++) if (dpad[i].contains(x, y)) return dpadKeys[i];
         if (aButton.contains(x, y)) return aKey; if (bButton.contains(x, y)) return bKey;
         if (startButton.contains(x, y)) return startKey; if (cButton.contains(x, y)) return cKey;

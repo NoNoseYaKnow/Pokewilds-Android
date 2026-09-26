@@ -7,6 +7,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.jar.JarFile;
 
 /** Owns all processes for one game session; no commands are accepted from intents. */
 public final class RuntimeService extends Service {
@@ -63,9 +64,11 @@ public final class RuntimeService extends Service {
     private void runSession() {
         try {
             options = RuntimeOptions.read(this);
+            PatchOptions patches = PatchOptions.read(this);
             try (PrintWriter out = new PrintWriter(log)) {
                 out.println("PokeWilds 0.8.11; target SDK " + getApplicationInfo().targetSdkVersion
                     + "; graphics=" + options.graphics + "; viewport=" + options.width + "x" + options.height);
+                out.println("Enabled game patches: " + (patches.anyEnabled() ? String.join(", ", patches.enabledNames()) : "none"));
             }
             if (!GameInstaller.isInstalled(this)) throw new IOException("Game files are not installed; open the launcher to download or select them");
             status = "Preparing bundled runtime files…";
@@ -74,12 +77,18 @@ public final class RuntimeService extends Service {
             File game = new File(getFilesDir(), "game");
             SaveArchive.recoverInterruptedImport(game.toPath());
             ModManager.recover(game.toPath());
+            if (!patches.floors) {
+                String enhancedWorld = FloorSaveCompatibility.firstEnhancedWorld(game);
+                if (enhancedWorld != null) throw new IOException(enhancedWorld + " needs Separate floor occupancy. Enable that patch to protect overlapping Pokémon, or export and remove the world before playing without it.");
+            }
             for (String name : new String[]{"libproot.so", "libproot-loader.so", "libvirgl_test_server_android.so", "libpulseaudio.so"}) {
                 if (!new File(nativeDir, name).isFile()) throw new IOException("Build is missing native runtime component: " + name);
             }
             SafeTar.deleteTree(tmp.toPath());
             if (!tmp.mkdirs()) throw new IOException("Cannot prepare session sockets");
             if (!new File(tmp, "hidden-input").mkdir()) throw new IOException("Cannot isolate game input devices");
+            if (patches.anyEnabled()) stagePatchAgent();
+            if (patches.controlsEnabled()) stageControlAgent();
             status = "Starting display…";
             Process x11 = start(Arrays.asList("/system/bin/app_process", "/", "com.termux.x11.CmdEntryPoint", ":0", "-ac", "-nolisten", "tcp"));
             waitForSocket(new File(tmp, ".X11-unix/X0"), x11);
@@ -107,7 +116,19 @@ public final class RuntimeService extends Service {
             }
             if (!surfaceReady) throw new IOException("Display surface did not connect");
             status = "Starting PokeWilds…";
-            Process gameProcess = start(guest(Arrays.asList("/usr/bin/java", "-Dorg.lwjgl.system.allocator=system", "-Dorg.lwjgl.glfw.window.fullscreen=true", "-jar", "/game/pokewilds.jar")));
+            List<String> gameCommand = new ArrayList<>(Arrays.asList("/usr/bin/java", "-Dorg.lwjgl.system.allocator=system", "-Dorg.lwjgl.glfw.window.fullscreen=true"));
+            if (patches.anyEnabled()) {
+                gameCommand.add("-javaagent:/tmp/bugfix.jar");
+                gameCommand.addAll(patches.jvmArguments());
+            }
+            if (patches.controlsEnabled()) {
+                gameCommand.add("-javaagent:/tmp/control-patches.jar");
+                gameCommand.add("-Dcontrols.radial=" + patches.radial);
+                gameCommand.add("-Dcontrols.zoom=" + patches.zoom);
+                gameCommand.add("-Dcontrols.nativePixels=" + (patches.zoom && options.autoViewport));
+            }
+            gameCommand.addAll(Arrays.asList("-jar", "/game/pokewilds.jar"));
+            Process gameProcess = start(guest(gameCommand));
             // Do not report ready just because Java exists: require the game's X11 window.
             boolean window = false;
             for (int i = 0; i < 60 && gameProcess.isAlive() && !stopping; i++) {
@@ -144,6 +165,34 @@ public final class RuntimeService extends Service {
             saveDialogVisible = false; active = false;
             cleanup(); DATA_LOCK.release(); stopForeground(true); stopSelf();
         }
+    }
+    private void stagePatchAgent() throws IOException {
+        File agent = new File(tmp, "bugfix.jar");
+        try (InputStream source = getAssets().open("bugfix.jar")) {
+            Files.copy(source, agent.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        try (JarFile jar = new JarFile(agent)) {
+            java.util.jar.Manifest manifest = jar.getManifest();
+            if (manifest == null || !"local.pokewilds.bugfix.BugFixAgent".equals(
+                    manifest.getMainAttributes().getValue("Premain-Class")))
+                throw new IOException("Bundled game patch agent has no expected entry point");
+        }
+    }
+    private void stageControlAgent() throws IOException {
+        File agent = new File(tmp, "control-patches.jar");
+        try (InputStream source = getAssets().open("control-patches.jar")) {
+            Files.copy(source, agent.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        try (JarFile jar = new JarFile(agent)) {
+            java.util.jar.Manifest manifest = jar.getManifest();
+            if (manifest == null || !"com.pkmngen.game.OdinAgent".equals(
+                    manifest.getMainAttributes().getValue("Premain-Class")))
+                throw new IOException("Bundled controls agent has no expected entry point");
+        }
+        File controls = new File(tmp, "odin-controls");
+        if (!controls.isDirectory() && !controls.mkdirs()) throw new IOException("Cannot prepare controls bridge");
+        Files.write(new File(controls, "commands").toPath(), "RESET 0;\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.deleteIfExists(new File(controls, "state").toPath());
     }
     private void resizeGame(int[] size) throws IOException, InterruptedException {
         try (PrintWriter out = new PrintWriter(new FileOutputStream(log, true))) {

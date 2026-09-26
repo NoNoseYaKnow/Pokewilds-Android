@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -35,6 +36,8 @@ NATIVE_LIBS = (
 # build therefore uses .bin to preserve the gzip bytes exactly.
 PAYLOAD_ASSETS = ("assets/runtime.bin", "assets/runtime.tar.gz", "assets/runtime.tar")
 GAME_SOURCE_ASSET = "assets/game-source.json"
+PATCH_AGENT_ASSET = "assets/bugfix.jar"
+CONTROL_AGENT_ASSET = "assets/control-patches.jar"
 CHUNK = 1024 * 1024
 ELF_AARCH64 = 183
 
@@ -63,6 +66,62 @@ def run_tool(argv: list[str]) -> tuple[int, str]:
     except OSError as exc:
         return 127, str(exc)
     return result.returncode, result.stdout
+
+
+def inspect_patch_agent(zf: zipfile.ZipFile, errors: list[str]) -> dict[str, object] | None:
+    try:
+        with zf.open(PATCH_AGENT_ASSET) as stream:
+            data = stream.read(4 * 1024 * 1024 + 1)
+    except KeyError:
+        errors.append("missing built-in patch agent")
+        return None
+    if len(data) > 4 * 1024 * 1024:
+        errors.append("built-in patch agent is unexpectedly large")
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as agent:
+            names = set(agent.namelist())
+            required = {
+                "META-INF/MANIFEST.MF",
+                "local/pokewilds/bugfix/BugFixAgent.class",
+                "local/pokewilds/bugfix/Hooks.class",
+                "local/pokewilds/bugfix/asm/ClassReader.class",
+            }
+            if not required.issubset(names):
+                errors.append("built-in patch agent is missing required classes or manifest")
+            if "META-INF/MANIFEST.MF" in names:
+                manifest = agent.read("META-INF/MANIFEST.MF").decode("utf-8", errors="replace")
+                if "Premain-Class: local.pokewilds.bugfix.BugFixAgent" not in manifest:
+                    errors.append("built-in patch agent has the wrong premain class")
+    except (OSError, zipfile.BadZipFile):
+        errors.append("built-in patch agent is not a readable JAR")
+    return {"asset": PATCH_AGENT_ASSET, "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def inspect_control_agent(zf: zipfile.ZipFile, errors: list[str]) -> dict[str, object] | None:
+    try:
+        with zf.open(CONTROL_AGENT_ASSET) as stream:
+            data = stream.read(1024 * 1024 + 1)
+    except KeyError:
+        errors.append("missing built-in control agent")
+        return None
+    if len(data) > 1024 * 1024:
+        errors.append("built-in control agent is unexpectedly large")
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as agent:
+            names = set(agent.namelist())
+            if not {"META-INF/MANIFEST.MF", "com/pkmngen/game/OdinAgent.class"}.issubset(names):
+                errors.append("built-in control agent is missing its class or manifest")
+            if "com/pkmngen/game/OdinInputHook.class" in names:
+                errors.append("built-in control agent contains the donor input replacement hook")
+            if "META-INF/MANIFEST.MF" in names:
+                manifest = agent.read("META-INF/MANIFEST.MF").decode("utf-8", errors="replace")
+                if "Premain-Class: com.pkmngen.game.OdinAgent" not in manifest:
+                    errors.append("built-in control agent has the wrong premain class")
+    except (OSError, zipfile.BadZipFile):
+        errors.append("built-in control agent is not a readable JAR")
+    return {"asset": CONTROL_AGENT_ASSET, "sha256": hashlib.sha256(data).hexdigest()}
 
 
 def read_properties(zf: zipfile.ZipFile, errors: list[str]) -> dict[str, str]:
@@ -277,6 +336,8 @@ def verify(apk_path: Path, aapt2: str | None, apksigner: str | None) -> tuple[di
                 or name.endswith("/pokewilds-otherplatforms.zip")))
             if direct_game_files:
                 errors.append("APK contains direct game files: " + ", ".join(direct_game_files[:5]))
+            result["patchAgent"] = inspect_patch_agent(zf, errors)
+            result["controlAgent"] = inspect_control_agent(zf, errors)
             native_result = result["native"]
             assert isinstance(native_result, list)
             for library in NATIVE_LIBS:

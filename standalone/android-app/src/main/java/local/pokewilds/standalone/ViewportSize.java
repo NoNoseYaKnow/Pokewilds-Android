@@ -4,6 +4,20 @@ package local.pokewilds.standalone;
 final class ViewportSize {
     private ViewportSize() { }
 
+    /** Integer-scaled Auto canvas for the zoom patch. */
+    static int[] autoZoom(int screenWidth, int screenHeight) {
+        if (screenWidth <= 0 || screenHeight <= 0) return new int[]{480, 432};
+        int upscale = screenWidth >= 960 && screenHeight >= 864 ? 2 : 1;
+        int width = (screenWidth & ~1) / upscale;
+        int height = (screenHeight & ~1) / upscale;
+        // The desktop menus require at least a 10:9 canvas. On portrait and
+        // square displays, center a shorter game picture instead of rendering
+        // into a tall canvas whose menu extends beyond its usable width.
+        height = Math.min(height, (width * 432 / 480) & ~1);
+        if (width < 480 || height < 432) return auto(screenWidth, screenHeight);
+        return new int[]{width, height};
+    }
+
     static int[] auto(int screenWidth, int screenHeight) {
         if (screenWidth <= 0 || screenHeight <= 0) return new int[]{480, 432};
         // Preserve the desktop menu's minimum canvas. A 16:9 screen becomes

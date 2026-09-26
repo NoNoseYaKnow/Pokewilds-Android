@@ -6,6 +6,7 @@ launcher/aligned.apk
 launcher/*.p12
 launcher/*.jks
 bin/*.idsig
+.DS_Store
 
 /work/
 
