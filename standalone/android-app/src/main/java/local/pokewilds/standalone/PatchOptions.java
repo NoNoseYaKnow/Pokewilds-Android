@@ -42,12 +42,12 @@ final class PatchOptions {
     static PatchOptions read(Context context) {
         SharedPreferences preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
         return new PatchOptions(
-            preferences.getBoolean(KEY_PREFIX + SPRITES, false),
-            preferences.getBoolean(KEY_PREFIX + HOOH, false),
-            preferences.getBoolean(KEY_PREFIX + FLOORS, false),
-            preferences.getBoolean(KEY_PREFIX + EGGS, false),
-            preferences.getBoolean(KEY_PREFIX + RADIAL, false),
-            preferences.getBoolean(KEY_PREFIX + ZOOM, false));
+            preferences.getBoolean(KEY_PREFIX + SPRITES, true),
+            preferences.getBoolean(KEY_PREFIX + HOOH, true),
+            preferences.getBoolean(KEY_PREFIX + FLOORS, true),
+            preferences.getBoolean(KEY_PREFIX + EGGS, true),
+            preferences.getBoolean(KEY_PREFIX + RADIAL, true),
+            preferences.getBoolean(KEY_PREFIX + ZOOM, true));
     }
 
     static void save(Context context, String patch, boolean enabled) {

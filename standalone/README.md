@@ -254,7 +254,7 @@ you may want to restore deleted files.
 The **Patches** section in App settings groups directional sprites, Ho-Oh, and
 egg floor saving under **Fixes**. The field move wheel, shoulder zoom, and
 separate floor occupancy appear under **Enhancements**. Choices are saved
-in app preferences and take effect when the game next starts. All six are off
+in app preferences and take effect when the game next starts. All six are on
 by default. The verified official `pokewilds.jar` stays untouched: the app
 stages only the agents needed by the selected patches in its private session
 directory. The wheel uses L2 and the existing touch overlay; zoom uses L1/R1
@@ -262,8 +262,8 @@ or optional touch +/− buttons in the world and the map opened from the Start
 menu. The original on-screen controls remain in place,
 and L1/R1 still cycle BUILD/DIG materials. No user-supplied code patches are
 accepted. World zoom advances in whole framebuffer-pixel steps. With Auto
-display mode, enabling zoom renders the game at the screen's native resolution
-to keep these steps crisp; this can use more GPU power. Map zoom reaches up to
+display mode, enabling zoom renders the game at half the available display size
+and scales it up 2x on large enough screens. Map zoom reaches up to
 4× magnification in whole-pixel steps. When different floors contain
 Pokémon at the same coordinates, the floor fix writes exact placements to an
 extra entry in the map save ZIP. The original `data.json` remains readable by

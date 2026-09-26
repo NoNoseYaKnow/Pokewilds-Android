@@ -488,7 +488,7 @@ public final class LauncherActivity extends Activity {
         PatchOptions options = PatchOptions.read(this);
         TextView heading = new TextView(this); heading.setText("Patches"); heading.setTextSize(20); layout.addView(heading);
         TextView help = new TextView(this);
-        help.setText("Choose built-in patches. Changes take effect the next time the game starts.");
+        help.setText("All built-in patches are enabled by default. Changes take effect the next time the game starts.");
         layout.addView(help);
         spritesPatchControl = patchCheckbox("Directional sprites", "Fixes incorrect Cut, Ride, and Build facing directions with some mods.",
             options.sprites, PatchOptions.SPRITES);
