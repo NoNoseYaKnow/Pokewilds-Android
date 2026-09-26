@@ -7,6 +7,8 @@ import android.view.WindowManager;
 /** The upstream display/input implementation, hosted inside our application. */
 public final class GameActivity extends com.termux.x11.MainActivity {
     private TouchControls touchControls;
+    private ControlPatchBridge controlPatches;
+    private boolean pixelAlignedZoom;
     private android.app.AlertDialog gameMenu;
     private GameKeyBindings keyBindings = GameKeyBindings.defaults();
     private int keyboardShortcut;
@@ -30,8 +32,10 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         RuntimeOptions options = RuntimeOptions.read(this);
         android.graphics.Rect area = getLorieView().getAvailableRect();
         if (area.width() <= 0 || area.height() <= 0) return;
-        int[] size = options.autoViewport ? ViewportSize.auto(area.width(), area.height())
-            : new int[]{options.width, options.height};
+        int[] size;
+        if (!options.autoViewport) size = new int[]{options.width, options.height};
+        else if (pixelAlignedZoom) size = ViewportSize.autoZoom(area.width(), area.height());
+        else size = ViewportSize.auto(area.width(), area.height());
         if (size[0] == viewportWidth && size[1] == viewportHeight) return;
         viewportWidth = size[0]; viewportHeight = size[1];
         RuntimeOptions.applyDisplaySize(this, viewportWidth, viewportHeight);
@@ -48,16 +52,21 @@ public final class GameActivity extends com.termux.x11.MainActivity {
             touchControls.setKeyBindings(keyBindings);
             touchControls.setTouchMode(TouchControls.readTouchMode(this));
         }
+        if (controlPatches != null) controlPatches.resume();
         sessionHandler.post(checkSession);
     }
     @Override public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);
         RuntimeService.displayFocused = focused;
+        if (controlPatches != null) {
+            if (focused) controlPatches.resume(); else controlPatches.suspend();
+        }
     }
     @Override public void onPause() {
         sessionHandler.removeCallbacks(checkSession);
         RuntimeService.displayFocused = false;
         RuntimeService.surfaceReady = false;
+        if (controlPatches != null) controlPatches.suspend();
         if (touchControls != null) touchControls.releaseAll();
         rightTriggerHeld = false;
         rightTriggerKeyHeld = false;
@@ -91,9 +100,16 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         if (exit != null) exit.setOnClickListener(v -> onBackPressed());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         android.view.View content = findViewById(android.R.id.content);
+        PatchOptions patches = PatchOptions.read(this);
+        pixelAlignedZoom = patches.zoom;
         if (content instanceof android.view.ViewGroup) {
             ((android.view.ViewGroup) content).setMotionEventSplittingEnabled(true);
             touchControls = new TouchControls(this, this::dispatchTouchKey, this::toggleKeyboard);
+            if (patches.controlsEnabled()) {
+                controlPatches = new ControlPatchBridge(this, patches.radial, patches.zoom,
+                    () -> { if (touchControls != null) touchControls.invalidate(); });
+                touchControls.setControlPatches(controlPatches);
+            }
             ((android.view.ViewGroup) content).addView(touchControls, new android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         }
@@ -104,6 +120,10 @@ public final class GameActivity extends com.termux.x11.MainActivity {
     private boolean dispatchTouchKey(int keyCode, int action) {
         if (gameMenu != null) return true;
         if (handleSaveDialogKey(keyCode, action, 0)) return true;
+        if (controlPatches != null && (keyCode == android.view.KeyEvent.KEYCODE_BUTTON_L1
+            || keyCode == android.view.KeyEvent.KEYCODE_BUTTON_R1))
+            return controlPatches.touchZoom(keyCode == android.view.KeyEvent.KEYCODE_BUTTON_R1,
+                action == android.view.KeyEvent.ACTION_DOWN);
         return sendXKey(keyCode, action == android.view.KeyEvent.ACTION_DOWN);
     }
     private boolean sendXKey(int keyCode, boolean down) {
@@ -146,6 +166,7 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         }
         if (handleKeyboardShortcut(event)) return true;
         if (handleSaveDialogKey(event.getKeyCode(), event.getAction(), event.getRepeatCount())) return true;
+        if (controlPatches != null && controlPatches.routeKey(event)) return true;
         if (sendGamepadButton(event)) return true;
         return super.dispatchKeyEvent(event);
     }
@@ -154,6 +175,7 @@ public final class GameActivity extends com.termux.x11.MainActivity {
         if (gameMenu != null) return true;
         if (handleKeyboardShortcut(event)) return true;
         if (handleSaveDialogKey(event.getKeyCode(), event.getAction(), event.getRepeatCount())) return true;
+        if (controlPatches != null && controlPatches.routeKey(event)) return true;
         if (sendGamepadButton(event)) return true;
         return super.handleKey(event);
     }
@@ -199,9 +221,14 @@ public final class GameActivity extends com.termux.x11.MainActivity {
     }
     private final int[] directionKeys = {android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
         android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN};
+    @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        if (gameMenu == null && controlPatches != null && controlPatches.routeMotion(event)) return true;
+        return super.dispatchGenericMotionEvent(event);
+    }
     @Override public boolean onGenericMotionEvent(android.view.MotionEvent event) {
         if (touchControls != null) touchControls.refreshControllerState();
         if (gameMenu != null) return true;
+        if (controlPatches != null && controlPatches.routeMotion(event)) return true;
         if ((event.getSource() & android.view.InputDevice.SOURCE_JOYSTICK) != 0 && event.getAction() == android.view.MotionEvent.ACTION_MOVE) {
             if (keyboardShortcut == KeyboardShortcut.RIGHT_TRIGGER && !rightTriggerKeySeen) {
                 float trigger = Math.max(event.getAxisValue(android.view.MotionEvent.AXIS_RTRIGGER),

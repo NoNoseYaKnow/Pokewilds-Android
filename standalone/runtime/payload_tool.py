@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -273,7 +274,17 @@ def obtain(item: dict, cache: Path, offline: bool, log_file: Path | None) -> Pat
     target = cache / item["id"]
     log(f"download: {item['id']} from {url}", log_file)
     try:
-        with urllib.request.urlopen(url, timeout=60) as source, target.open("wb") as output:
+        try:
+            source = urllib.request.urlopen(url, timeout=60)
+        except urllib.error.HTTPError as exc:
+            # Ubuntu's rolling pool removes superseded revisions. Launchpad
+            # keeps the same pinned package file in its primary archive.
+            if exc.code != 404 or not url.startswith("https://ports.ubuntu.com/ubuntu-ports/pool/") or not url.endswith(".deb"):
+                raise
+            archive_url = "https://launchpad.net/ubuntu/+archive/primary/+files/" + Path(url).name
+            log(f"archive: {item['id']} from {archive_url}", log_file)
+            source = urllib.request.urlopen(archive_url, timeout=60)
+        with source, target.open("wb") as output:
             shutil.copyfileobj(source, output)
     except Exception as exc:
         target.unlink(missing_ok=True)

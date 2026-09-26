@@ -10,6 +10,7 @@ import android.provider.DocumentsContract;
 import android.widget.Button;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -37,6 +38,12 @@ public final class LauncherActivity extends Activity {
     private Spinner graphicsControl;
     private Spinner viewportControl;
     private Spinner touchControl;
+    private CheckBox spritesPatchControl;
+    private CheckBox hoohPatchControl;
+    private CheckBox floorsPatchControl;
+    private CheckBox eggsPatchControl;
+    private CheckBox radialPatchControl;
+    private CheckBox zoomPatchControl;
     private final java.util.concurrent.ExecutorService files = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -180,6 +187,7 @@ public final class LauncherActivity extends Activity {
             }
             startActivity(new Intent(this, ModBrowserActivity.class));
         }); gamePanel.addView(browseMods);
+        addPatchControls(gamePanel);
         layout.addView(gamePanel);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(layout); setContentView(scroll);
@@ -467,6 +475,91 @@ public final class LauncherActivity extends Activity {
         graphicsControl.setEnabled(enabled);
         viewportControl.setEnabled(enabled);
         touchControl.setEnabled(enabled);
+        boolean patchesEnabled = enabled && !GameAcquisitionService.active;
+        if (spritesPatchControl != null) spritesPatchControl.setEnabled(patchesEnabled);
+        if (hoohPatchControl != null) hoohPatchControl.setEnabled(patchesEnabled);
+        if (floorsPatchControl != null) floorsPatchControl.setEnabled(patchesEnabled);
+        if (eggsPatchControl != null) eggsPatchControl.setEnabled(patchesEnabled);
+        if (radialPatchControl != null) radialPatchControl.setEnabled(patchesEnabled);
+        if (zoomPatchControl != null) zoomPatchControl.setEnabled(patchesEnabled);
+    }
+
+    private void addPatchControls(LinearLayout layout) {
+        PatchOptions options = PatchOptions.read(this);
+        TextView heading = new TextView(this); heading.setText("Patches"); heading.setTextSize(20); layout.addView(heading);
+        TextView help = new TextView(this);
+        help.setText("All built-in patches are enabled by default. Changes take effect the next time the game starts.");
+        layout.addView(help);
+        spritesPatchControl = patchCheckbox("Directional sprites", "Fixes incorrect Cut, Ride, and Build facing directions with some mods.",
+            options.sprites, PatchOptions.SPRITES);
+        hoohPatchControl = patchCheckbox("Ho-Oh", "Fixes nearby Pokémon freezing when near Ho-Oh.", options.hooh, PatchOptions.HOOH);
+        floorsPatchControl = patchCheckbox("Separate floor occupancy", "Allows Pokémon to occupy overlapping tiles on different building floors.",
+            options.floors, PatchOptions.FLOORS);
+        eggsPatchControl = patchCheckbox("Egg floor saving", "Saves eggs on the floor where they were laid.",
+            options.eggs, PatchOptions.EGGS);
+        radialPatchControl = patchCheckbox("Field move wheel", "Hold L2, choose a field move by analog stick or touch, then release to use it.",
+            options.radial, PatchOptions.RADIAL);
+        zoomPatchControl = patchCheckbox("Shoulder zoom", "Use L1/R1 to zoom in the world or the map opened from the Start menu; BUILD/DIG still cycle materials. Auto Fit uses pixel-aligned scaling for crisp zoom and may use more power.",
+            options.zoom, PatchOptions.ZOOM);
+        addPatchSubheading(layout, "Fixes");
+        layout.addView(spritesPatchControl);
+        layout.addView(hoohPatchControl);
+        layout.addView(eggsPatchControl);
+        addPatchSubheading(layout, "Enhancements");
+        layout.addView(radialPatchControl);
+        layout.addView(zoomPatchControl);
+        layout.addView(floorsPatchControl);
+        TextView floorWarning = new TextView(this);
+        floorWarning.setText("SAVE COMPATIBILITY: When Pokémon share coordinates on different floors, this patch adds exact placements to the world save. Older PokeWilds versions read only a legacy copy, where some Pokémon may be moved or absent. Saving there removes the exact placements. Export a backup and keep this patch on for affected worlds.");
+        floorWarning.setPadding(24, 4, 24, 12);
+        layout.addView(floorWarning);
+        updateRuntimeControls();
+    }
+
+    private void addPatchSubheading(LinearLayout layout, String title) {
+        TextView subheading = new TextView(this);
+        subheading.setText(title);
+        subheading.setTextSize(18);
+        subheading.setTypeface(null, android.graphics.Typeface.BOLD);
+        subheading.setPadding(0, 16, 0, 4);
+        layout.addView(subheading);
+    }
+
+    private CheckBox patchCheckbox(String label, String description, boolean checked, String patch) {
+        CheckBox checkbox = new CheckBox(this);
+        checkbox.setText(label + " — " + description);
+        checkbox.setChecked(checked);
+        checkbox.setOnCheckedChangeListener((button, value) -> {
+            if (PatchOptions.read(LauncherActivity.this).isEnabled(patch) == value) return;
+            if (RuntimeService.active || GameAcquisitionService.active) {
+                button.setChecked(PatchOptions.read(LauncherActivity.this).isEnabled(patch));
+                RuntimeService.status = "Finish setup and quit the game before changing patches.";
+                return;
+            }
+            if (PatchOptions.FLOORS.equals(patch)) {
+                if (value) {
+                    new android.app.AlertDialog.Builder(this).setTitle("Floor save compatibility")
+                        .setMessage("This patch saves exact Pokémon placements when floors overlap. Older PokeWilds versions may show those Pokémon at moved positions or omit them. Saving there removes the exact placements. Export your worlds before using them in an older version.")
+                        .setPositiveButton("Enable patch", (dialog, which) -> PatchOptions.save(this, patch, true))
+                        .setNegativeButton("Keep off", (dialog, which) -> button.setChecked(false))
+                        .setOnCancelListener(dialog -> button.setChecked(false)).show();
+                    return;
+                }
+                String enhanced;
+                try { enhanced = FloorSaveCompatibility.firstEnhancedWorld(new java.io.File(getFilesDir(), "game")); }
+                catch (IOException e) { enhanced = "a world whose saves could not be inspected"; }
+                if (enhanced != null) {
+                    new android.app.AlertDialog.Builder(this).setTitle("This save needs the floor patch")
+                        .setMessage(enhanced + " contains exact floor placements. The launcher will block game startup while this patch is off. Turn it back on to play that world, or export and remove the world before starting without it.")
+                        .setPositiveButton("Turn off for now", (dialog, which) -> PatchOptions.save(this, patch, false))
+                        .setNegativeButton("Keep enabled", (dialog, which) -> button.setChecked(true))
+                        .setOnCancelListener(dialog -> button.setChecked(true)).show();
+                    return;
+                }
+            }
+            PatchOptions.save(LauncherActivity.this, patch, value);
+        });
+        return checkbox;
     }
     private void openGameForQuit() {
         if (!RuntimeService.active) { RuntimeService.status = "No game is running."; return; }

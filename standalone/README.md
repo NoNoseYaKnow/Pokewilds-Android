@@ -139,8 +139,11 @@ keeps a minimum 480x432 canvas, and adjusts to window-size changes.
 Screens narrower than 10:9 retain that canvas with letterboxing so the
 unchanged desktop menu remains fully visible. For
 example, 16:9 uses 768x432, 4:3 uses 576x432, and the Pocket DMG uses about
-496x432. Width is aligned to eight pixels for the X11 mode, so a tiny aspect
-ratio difference is possible. Existing fixed selections survive upgrades;
+496x432. With Shoulder zoom enabled, Auto uses a canvas at half the available
+display size on large enough screens and scales it up 2x. Portrait keeps a
+centered 10:9 game picture so the menu remains visible. In regular Auto mode,
+width is aligned to eight pixels for the X11 mode, so a tiny aspect ratio
+difference is possible. Existing fixed selections survive upgrades;
 choose Auto explicitly to switch. Changing graphics profiles preserves Auto. The selections
 are stored in the app's private runtime preferences and applied to the next
 session; the controls are disabled while a session is active. The normal
@@ -247,6 +250,28 @@ confirm. Imports are merged, so one folder can contain files from several
 imports. The removal stages a copy of the remaining tree and activates it with
 the same interrupted-swap recovery used by imports. Export a backup first if
 you may want to restore deleted files.
+
+The **Patches** section in App settings groups directional sprites, Ho-Oh, and
+egg floor saving under **Fixes**. The field move wheel, shoulder zoom, and
+separate floor occupancy appear under **Enhancements**. Choices are saved
+in app preferences and take effect when the game next starts. All six are on
+by default. The verified official `pokewilds.jar` stays untouched: the app
+stages only the agents needed by the selected patches in its private session
+directory. The wheel uses L2 and the existing touch overlay; zoom uses L1/R1
+or optional touch +/− buttons in the world and the map opened from the Start
+menu. The original on-screen controls remain in place,
+and L1/R1 still cycle BUILD/DIG materials. No user-supplied code patches are
+accepted. World zoom advances in whole framebuffer-pixel steps. With Auto
+display mode, enabling zoom renders the game at half the available display size
+and scales it up 2x on large enough screens. Map zoom reaches up to
+4× magnification in whole-pixel steps. When different floors contain
+Pokémon at the same coordinates, the floor fix writes exact placements to an
+extra entry in the map save ZIP. The original `data.json` remains readable by
+older PokeWilds versions as a legacy projection, but some Pokémon may appear
+moved or absent there. Saving with an older version removes the exact entry.
+The launcher warns about this and blocks starting with the floor fix off while
+an enhanced world is installed. Export a save backup before opening such a
+world in an older version.
 
 ## Prototype boundary
 

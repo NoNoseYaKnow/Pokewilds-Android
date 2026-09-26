@@ -21,6 +21,18 @@ public class ViewportSizeTest {
         assertArrayEquals(new int[]{480, 432}, ViewportSize.auto(0, 0));
         assertArrayEquals(new int[]{480, 432}, ViewportSize.auto(-1, 1080));
     }
+    @Test public void zoomAutoUsesExactTwoTimesUpscaleOnPhone() {
+        assertArrayEquals(new int[]{1170, 540}, ViewportSize.autoZoom(2340, 1080));
+        assertArrayEquals(new int[]{1170, 540}, ViewportSize.autoZoom(2341, 1081));
+    }
+    @Test public void zoomAutoKeepsMenusUsableOnSmallScreens() {
+        assertArrayEquals(new int[]{960, 800}, ViewportSize.autoZoom(960, 800));
+        assertArrayEquals(new int[]{720, 648}, ViewportSize.autoZoom(720, 720));
+        assertArrayEquals(new int[]{480, 432}, ViewportSize.autoZoom(0, 0));
+    }
+    @Test public void zoomAutoCentersLandscapeCanvasOnPortraitDisplay() {
+        assertArrayEquals(new int[]{540, 486}, ViewportSize.autoZoom(1080, 2340));
+    }
     @Test public void roundingKeepsAspectErrorBelowOnePercentAcrossHandhelds() {
         int[][] screens={{1920,1080},{1920,1200},{1240,1080},{1440,1080},{720,720},{1080,1920},{2560,1080}};
         for (int[] screen : screens) {
