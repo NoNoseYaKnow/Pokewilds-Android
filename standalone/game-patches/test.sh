@@ -14,8 +14,11 @@ GAME="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 rm -rf build/test build/patched.jar && mkdir -p build/test
 javac -d build/test -cp "dist/bugfix.jar:$GAME" tests/*.java
 
-echo; echo "== 0. all 16 patch-toggle combinations"
+echo; echo "== 0. all 32 patch-toggle combinations"
 java -cp "build/test:dist/bugfix.jar:$GAME" local.pokewilds.bugfix.TestToggleMatrix "$GAME" | grep '^PASS\|^FAIL'
+
+echo; echo "== 0a. controller wording and configured-Start editor hooks"
+java -cp "build/test:dist/bugfix.jar:$GAME" local.pokewilds.bugfix.TestPrompts "$GAME" | grep '^PASS\|^FAIL'
 
 echo; echo "== 1. bytecode patches: every patched site accounted for, every class passes the verifier"
 java -Xverify:all -cp "build/test:dist/bugfix.jar:$GAME" local.pokewilds.bugfix.TestFloors "$GAME" 2>&1 | grep -E "^(PASS|FAIL|reads|ALL OK|FAILURES)" | grep -v "^PASS untouched" | grep -v "tiles assignments hooked"
@@ -24,10 +27,16 @@ java -cp "build/test:dist/bugfix.jar" local.pokewilds.bugfix.TestFloorMaps 2>&1 
 echo; echo "== 3. as a -javaagent: all game classes load with the strict verifier"
 java -Xverify:all -javaagent:dist/bugfix.jar -cp "$GAME:build/test" local.pokewilds.bugfix.LoadAll "$GAME" 2>&1 | grep -E "^\[bugfix\] (floors: game jar|agent)|loaded|VERIFY|reflection"
 java -Xverify:all -javaagent:dist/bugfix.jar -cp "$GAME:build/test" HoOhCheck 2>&1 | tail -1
+echo; echo "== 3a. the enabled prompt patch passes the strict agent verifier"
+java -Xverify:all -Dbugfix.prompts=true -javaagent:dist/bugfix.jar -cp "$GAME:build/test" local.pokewilds.bugfix.LoadAll "$GAME" 2>&1 | grep -E "^\[bugfix\] (floors: game jar|agent)|loaded|VERIFY|reflection"
 echo; echo "== 4. as an offline patch: patch the jar, then load it with NO agent"
 java -jar dist/bugfix.jar "$GAME" build/patched.jar 2>&1 | grep -E "^(Patched|Wrote|ERROR)"
 java -Xverify:all -cp "build/patched.jar:build/test" local.pokewilds.bugfix.LoadAll build/patched.jar 2>&1 | grep -E "loaded|VERIFY|reflection"
 java -Xverify:all -cp "build/patched.jar:build/test" HoOhCheck 2>&1 | tail -1
+echo; echo "== 4a. the offline prompt patch includes its helper and passes the strict verifier without an agent"
+java -jar dist/bugfix.jar --prompts "$GAME" build/prompts-patched.jar 2>&1 | grep -E "^(Patched|Wrote|ERROR)"
+jar tf build/prompts-patched.jar | grep -qx 'local/pokewilds/bugfix/ControllerConfirm.class' && echo "PASS ControllerConfirm is bundled" || { echo "FAIL ControllerConfirm is missing"; exit 1; }
+java -Xverify:all -cp "build/prompts-patched.jar:build/test" local.pokewilds.bugfix.LoadAll build/prompts-patched.jar 2>&1 | grep -E "loaded|VERIFY|reflection"
 echo; echo "== 5. the patcher refuses anything but the official jar"
 AGAIN=$(java -jar dist/bugfix.jar build/patched.jar build/again.jar 2>&1 || true)
 echo "$AGAIN" | grep -q "^ERROR" && echo "PASS an already patched jar is refused" || { echo "FAIL an already patched jar was accepted"; exit 1; }

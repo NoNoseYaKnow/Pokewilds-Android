@@ -14,6 +14,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Optional radial and zoom commands. Existing Android and native input handling stays in place. */
 public final class OdinAgent {
     private static final boolean RADIAL = Boolean.getBoolean("controls.radial");
+    private static final boolean PROMPTS = Boolean.getBoolean("controls.prompts");
+    private static final boolean MAP = Boolean.getBoolean("controls.map");
     private static final boolean ZOOM = Boolean.getBoolean("controls.zoom");
     private static final boolean NATIVE_PIXELS = Boolean.getBoolean("controls.nativePixels");
     private static final File DIR = new File(System.getProperty("odin.controls.dir","/tmp/odin-controls"));
@@ -88,6 +90,16 @@ public final class OdinAgent {
         String op=a[0];long id=a.length>1?Long.parseLong(a[1]):0;
         if("BEAT".equals(op)){if(wheelOpen&&id==wheelId||id==requestedWheel)lastHeartbeat=System.currentTimeMillis();return;}
         if("RESET".equals(op)){release();return;}
+        if(PROMPTS && "START".equals(op)) {
+            long age = System.currentTimeMillis() - id;
+            if (age >= 0 && age < 1000 && !wheelOpen && requestedWheel == 0) ControllerStart.request(g);
+            return;
+        }
+        if(MAP && "MAP".equals(op)) {
+            long age = System.currentTimeMillis() - id;
+            if (age >= 0 && age < 1000 && !wheelOpen && requestedWheel == 0) MapShortcut.request(g);
+            return;
+        }
         if(RADIAL&&"OPEN".equals(op)){
             release();wheelId=id;requestedWheel=id;lastHeartbeat=System.currentTimeMillis();
             if(canOpen(g)){requestedWheel=0;hold(g);wheelOpen=true;}
