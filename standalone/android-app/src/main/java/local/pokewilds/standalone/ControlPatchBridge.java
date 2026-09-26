@@ -25,7 +25,7 @@ final class ControlPatchBridge {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Properties state = new Properties();
     private final Set<String> wheelOwners = new HashSet<>();
-    private final Set<Integer> consumedShoulders = new HashSet<>();
+    private final Set<String> consumedShoulders = new HashSet<>();
     private final Runnable changed;
     private long lastState, stateModified, lastReadAt, wheelId, lastBeat;
     private boolean stateFresh;
@@ -131,6 +131,14 @@ final class ControlPatchBridge {
         changed.run();
     }
 
+    private void cancelWheelOwner(String owner) {
+        if (wheelOwners.remove(owner) && wheelOwners.isEmpty()) {
+            send("CANCEL", wheelId, null);
+            selected = -1;
+        }
+        changed.run();
+    }
+
     void select(float x, float y) {
         if (!wheelShown() || x * x + y * y < .35f * .35f) return;
         double angle = Math.atan2(y, x) + Math.PI / 2;
@@ -145,19 +153,15 @@ final class ControlPatchBridge {
         if (dx * dx + dy * dy <= 1.12f * 1.12f) select(dx, dy);
     }
 
-    boolean touchZoom(boolean in, boolean down) {
-        if (!zoom) return false;
-        if (down && canZoom()) send("ZOOM", in ? 1 : -1, null);
-        return true;
-    }
-
     boolean routeKey(KeyEvent event) {
         if (!isController(event.getSource())) return false;
         int code = event.getKeyCode();
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        String owner = "key:" + event.getDeviceId();
         if (radial && code == KeyEvent.KEYCODE_BUTTON_L2) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)
-                wheel("key:" + event.getDeviceId(), down);
+            if (event.isCanceled()) cancelWheelOwner(owner);
+            else if (event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)
+                wheel(owner, down);
             return true;
         }
         if (wheelShown() && code >= KeyEvent.KEYCODE_DPAD_UP && code <= KeyEvent.KEYCODE_DPAD_RIGHT) {
@@ -170,9 +174,10 @@ final class ControlPatchBridge {
             return true;
         }
         if (zoom && (code == KeyEvent.KEYCODE_BUTTON_L1 || code == KeyEvent.KEYCODE_BUTTON_R1)) {
-            if (event.getAction() == KeyEvent.ACTION_UP && consumedShoulders.remove(code)) return true;
+            String shoulder = owner + ":" + code;
+            if (event.getAction() == KeyEvent.ACTION_UP && consumedShoulders.remove(shoulder)) return true;
             if (down && canZoom()) {
-                if (consumedShoulders.add(code)) send("ZOOM", code == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : -1, null);
+                if (consumedShoulders.add(shoulder)) send("ZOOM", code == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : -1, null);
                 return true;
             }
         }

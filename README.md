@@ -31,14 +31,17 @@ downloads on the next launch. A ZIP you selected from device storage stays in
 its original location.
 
 The D-pad or left stick moves, A and B act as the game's action buttons, Start
-opens PokeWilds's in-game menu, and L1/R1 provide C/V. For phones,
+opens PokeWilds's in-game menu, and L1/R1 zoom or cycle materials according to
+the current game mode and enabled patches. For phones,
 optional on-screen controls provide the same actions. They appear automatically
 when no game controller is connected, and can be set to On or Off in App
 settings. The overlay's small top button hides or restores it.
 
 Press **R3** (right stick click) to show or hide the Android keyboard. The
-shortcut is configurable in App settings. When on-screen controls are visible,
-their **Keyboard** control also opens it. Android Back opens a Game menu with
+shortcut is configurable in App settings. On-screen controls use **R2** when
+the selected shortcut button is absent from the overlay; choosing Off disables
+the shortcut for both touch and gamepad. Select and L2 are reserved for game
+actions. Android Back opens a Game menu with
 **Show keyboard** for use when the controls are hidden.
 
 ## Save, quit, and manage settings
@@ -84,7 +87,7 @@ After quitting the game, open **App settings** to manage six included
 PokeWilds 0.8.11 patches: directional mod sprites, Ho-Oh, Pokémon on separate
 building floors, eggs laid on upper floors, a field move wheel, and shoulder
 zoom. All six are on by default; each switch takes effect on the next game start.
-Hold L2 to choose a field move, or use L1/R1 (and the optional touch +/− buttons)
+Hold L2 to choose a field move, or use L1/R1 on a controller or the touch overlay
 to zoom. The existing on-screen controls and gamepad bindings remain available;
 L1/R1 still cycle materials during BUILD and DIG. The app runs selected patches
 from bundled Java agents and keeps the verified official game JAR unchanged.

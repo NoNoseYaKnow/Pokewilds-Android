@@ -458,14 +458,17 @@ public final class LauncherActivity extends Activity {
         Spinner keyboardControl = new Spinner(this);
         keyboardControl.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
             KeyboardShortcut.LABELS));
-        keyboardControl.setSelection(KeyboardShortcut.read(this));
+        keyboardControl.setSelection(KeyboardShortcut.indexOf(KeyboardShortcut.read(this)));
         keyboardControl.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onNothingSelected(AdapterView<?> parent) { }
             @Override public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) {
-                KeyboardShortcut.save(LauncherActivity.this, position);
+                KeyboardShortcut.save(LauncherActivity.this, KeyboardShortcut.CHOICES[position]);
             }
         });
         layout.addView(keyboardControl);
+        TextView keyboardHelp = new TextView(this);
+        keyboardHelp.setText("On-screen controls use R2 when the selected button is not shown. Off disables the shortcut for both touch and gamepad.");
+        layout.addView(keyboardHelp);
         updateRuntimeControls();
     }
 

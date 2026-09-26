@@ -151,16 +151,22 @@ launcher path keeps its one-tap auto-start behavior and uses the build's
 `native` default until a management selection is saved.
 
 On-screen controls can be set to Auto, On, or Off. Auto displays them when no
-game controller is connected. The overlay provides D-pad, A/B, Start, and C/V
-shoulder actions, supports held and simultaneous inputs, and leaves the center
+game controller is connected. The overlay provides D-pad, A/B, Select/Start,
+and L1/L2/R1/R2 with the same actions as physical controller buttons. L2 sits
+above L1 at the left, R2 above R1 at the right, and Select left of Start. All
+buttons remain visible regardless of patch settings. It supports held and
+simultaneous inputs and leaves the center
 of the game available for direct touch. Its small toggle hides or restores the
 controls during a session.
 The X11 cursor is hidden over the game. Taps use screen coordinates so the
 game's Swing save/quit dialog can still be selected by touch. In that dialog,
 Left/Right moves between Yes and No, and A activates the focused choice.
-The Keyboard control beside the overlay's hide button shows or hides the Android
-soft keyboard. On a gamepad, the right stick click (R3) does the same by default;
-the shortcut can be changed or turned off in App settings. Android Back opens a
+On a gamepad, right stick click (R3) shows or hides the Android keyboard by
+default. The shortcut can be changed or turned off in App settings. Touch uses
+R2 if the selected button is not on screen; Off disables both. Select and L2
+are no longer keyboard shortcut choices. Existing selections of those buttons
+reset to R3 on physical controllers and R2 on touch. Other selections retain
+their meaning. Android Back opens a
 Game menu with a Show keyboard choice, so touch users can still reach it when
 the on-screen controls are Off or hidden.
 
@@ -257,8 +263,8 @@ separate floor occupancy appear under **Enhancements**. Choices are saved
 in app preferences and take effect when the game next starts. All six are on
 by default. The verified official `pokewilds.jar` stays untouched: the app
 stages only the agents needed by the selected patches in its private session
-directory. The wheel uses L2 and the existing touch overlay; zoom uses L1/R1
-or optional touch +/− buttons in the world and the map opened from the Start
+directory. The wheel uses L2; zoom uses L1/R1 on physical controllers or the
+touch overlay in the world and the map opened from the Start
 menu. The original on-screen controls remain in place,
 and L1/R1 still cycle BUILD/DIG materials. No user-supplied code patches are
 accepted. World zoom advances in whole framebuffer-pixel steps. With Auto
